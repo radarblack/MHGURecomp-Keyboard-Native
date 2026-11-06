@@ -1,0 +1,7 @@
+build/
+*.log
+*.log.prev
+*.o
+*.so
+*.dll
+*.zip
