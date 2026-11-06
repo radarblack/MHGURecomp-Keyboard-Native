@@ -1,0 +1,7 @@
+include/engine_module_api.h is copied unchanged from MHGURecomp
+(https://github.com/morerokk/MHGURecomp, runtime/engine_module_api.h), which is
+MIT licensed: Copyright (c) 2026 Rokk. The header asks modules to copy it.
+
+This project is not affiliated with the MHGURecomp project, Capcom or Nintendo.
+It contains no game code or game data. It only reads and writes memory of the
+running port, and checks function signatures against values it expects.
