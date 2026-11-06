@@ -1,0 +1,171 @@
+name: Build keyboard_movement
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: Build type
+        type: choice
+        options:
+          - release
+          - debug
+        default: release
+      log_level:
+        description: Default log level compiled in (used when keyboard_movement.ini does not set LogLevel)
+        type: choice
+        options:
+          - info
+          - debug
+          - trace
+        default: info
+      platforms:
+        description: Platforms to build
+        type: choice
+        options:
+          - windows and linux
+          - windows only
+          - linux only
+        default: windows and linux
+      port_ref:
+        description: MHGURecomp branch, tag or commit to check compatibility against
+        type: string
+        default: master
+      create_release:
+        description: Publish the zips as a GitHub release
+        type: boolean
+        default: false
+      release_tag:
+        description: Release tag (required when publishing a release), for example v0.1.0
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  MODULE_NAME: keyboard_movement
+
+jobs:
+  test:
+    name: Unit and integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+      - name: Build and run the tests
+        run: make test
+
+  compat:
+    name: Port compatibility check
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+      - name: Check out MHGURecomp
+        uses: actions/checkout@v4
+        with:
+          repository: morerokk/MHGURecomp
+          ref: ${{ inputs.port_ref }}
+          path: port
+      - name: Compare against the port's headers and symbols
+        run: tools/check_port.sh port/runtime | tee compat.txt
+      - name: Add the result to the run summary
+        if: always()
+        run: |
+          {
+            echo "### Port compatibility (MHGURecomp ${{ inputs.port_ref }})"
+            echo
+            echo '```'
+            cat compat.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  windows:
+    name: Windows build
+    needs: test
+    if: inputs.platforms != 'linux only'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+      - name: Install the MinGW cross compiler and zip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64 zip
+      - name: Work out the version string
+        id: ver
+        run: |
+          echo "version=$(cat VERSION)+${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "level=KBM_LOG_$(echo '${{ inputs.log_level }}' | tr a-z A-Z)" >> "$GITHUB_OUTPUT"
+      - name: Build the DLL and package it
+        run: make package-windows BUILD=${{ inputs.build_type }} VERSION="${{ steps.ver.outputs.version }}" LOG_LEVEL=${{ steps.ver.outputs.level }}
+      - name: Show what was built
+        run: |
+          ls -l build/pkg-windows/engine_modules/${MODULE_NAME}
+          x86_64-w64-mingw32-objdump -p build/windows/${MODULE_NAME}.dll | sed -n '/Ordinal\/Name Pointer/,/^$/p'
+      - name: Zip the package
+        run: |
+          cd build/pkg-windows
+          zip -r "../${MODULE_NAME}-windows-${{ steps.ver.outputs.version }}.zip" engine_modules
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MODULE_NAME }}-windows
+          path: build/${{ env.MODULE_NAME }}-windows-*.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux build
+    needs: test
+    if: inputs.platforms != 'windows only'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+      - name: Install zip
+        run: sudo apt-get install -y zip
+      - name: Work out the version string
+        id: ver
+        run: |
+          echo "version=$(cat VERSION)+${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "level=KBM_LOG_$(echo '${{ inputs.log_level }}' | tr a-z A-Z)" >> "$GITHUB_OUTPUT"
+      - name: Build the shared library and package it
+        run: make package-linux BUILD=${{ inputs.build_type }} VERSION="${{ steps.ver.outputs.version }}" LOG_LEVEL=${{ steps.ver.outputs.level }}
+      - name: Zip the package
+        run: |
+          cd build/pkg-linux
+          zip -r "../${MODULE_NAME}-linux-${{ steps.ver.outputs.version }}.zip" engine_modules
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MODULE_NAME }}-linux
+          path: build/${{ env.MODULE_NAME }}-linux-*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [windows, linux]
+    if: ${{ !cancelled() && inputs.create_release && needs.windows.result != 'failure' && needs.linux.result != 'failure' && (needs.windows.result == 'success' || needs.linux.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Require a tag
+        run: |
+          if [ -z "${{ inputs.release_tag }}" ]; then
+            echo "create_release is on but release_tag is empty"
+            exit 1
+          fi
+      - name: Download the packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: keyboard_movement ${{ inputs.release_tag }}
+          files: dist/*.zip
+          generate_release_notes: true
