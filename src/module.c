@@ -21,17 +21,17 @@
 #define KBM_INI_NAME "keyboard_movement.ini"
 #define KBM_LOG_NAME "keyboard_movement.log"
 
-static const char *const k_tested_ports[] = {"0.14."};
+static const char *const k_checked_ports[] = {"0.14.", "0.15."};
 
 static bool g_loaded;
 static bool g_shutdown_done;
 
 MHGU_ENGINE_MODULE_EXPORT const uint32_t mhgu_engine_module_api = MHGU_ENGINE_MODULE_API;
 
-static bool port_version_tested(const char *v) {
+static bool port_version_checked(const char *v) {
     if (!v) return false;
-    for (size_t i = 0; i < sizeof k_tested_ports / sizeof k_tested_ports[0]; i++)
-        if (!strncmp(v, k_tested_ports[i], strlen(k_tested_ports[i]))) return true;
+    for (size_t i = 0; i < sizeof k_checked_ports / sizeof k_checked_ports[0]; i++)
+        if (!strncmp(v, k_checked_ports[i], strlen(k_checked_ports[i]))) return true;
     return false;
 }
 
@@ -85,13 +85,13 @@ MHGU_ENGINE_MODULE_EXPORT bool mhgu_engine_module_entry(const MhguHost *host, Mh
         return true;
     }
 
-    if (port_version_tested(host->port_version)) {
-        KBM_LOG(KBM_LOG_INFO, "port version is on the tested list");
+    if (port_version_checked(host->port_version)) {
+        KBM_LOG(KBM_LOG_INFO, "port version is on the list of checked versions");
     } else if (g_cfg.strict_version) {
-        abort_load("StrictVersion is on and this port version has not been tested with the module");
+        abort_load("StrictVersion is on and this port version has not been checked against the module");
         return false;
     } else {
-        KBM_LOG(KBM_LOG_WARN, "port version \"%s\" is not on the tested list: relying on the signature and symbol checks",
+        KBM_LOG(KBM_LOG_WARN, "port version \"%s\" is not on the list of checked versions: relying on the signature and symbol checks",
             host->port_version ? host->port_version : "(none)");
     }
 
