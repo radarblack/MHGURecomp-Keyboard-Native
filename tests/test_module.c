@@ -84,7 +84,20 @@ MOCK_EXPORT void guest_call(KbmCpu *c, uint32_t addr) {
 
 MOCK_EXPORT bool textinput_active(void) { return g_typing; }
 MOCK_EXPORT bool chat_active(void) { return g_chat; }
+#ifdef MOCK_OVERLAY_EXPORT
 MOCK_EXPORT bool overlay_menu_open(void) { return g_menu; }
+#endif
+#ifndef MOCK_NO_MENU_GATE
+MOCK_EXPORT void *SDL_GetKeyboardFocus(void) { return (void *)(uintptr_t)1; }
+MOCK_EXPORT bool SDL_TextInputActive(void *window) {
+    (void)window;
+#ifdef MOCK_OVERLAY_EXPORT
+    return false;
+#else
+    return g_menu;
+#endif
+}
+#endif
 MOCK_EXPORT const bool *SDL_GetKeyboardState(int *n) {
     if (n) *n = 512;
     return g_keys;
@@ -319,6 +332,15 @@ static void test_gates(void) {
         char *log = read_log();
         CHECK(strstr(log, "direct movement suspended"));
         CHECK(strstr(log, "direct movement resumed"));
+        if (g == 2) {
+#ifdef MOCK_OVERLAY_EXPORT
+            CHECK(strstr(log, "menu overlay is open"));
+            CHECK(strstr(log, "menu gate: the port's overlay_menu_open()"));
+#else
+            CHECK(strstr(log, "menu or text entry is open"));
+            CHECK(strstr(log, "overlay_menu_open is not exported by this build"));
+#endif
+        }
         (void)names;
     }
 }
@@ -459,6 +481,26 @@ static void test_log_rotation(void) {
     CHECK(access(path, F_OK) == 0);
 }
 
+#ifdef MOCK_NO_MENU_GATE
+static void test_no_menu_gate(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n");
+    CHECK(!load_module());
+    CHECK_EQ(fnhook_get(KBM_FN_PL_INPUT_UPDATE), 0);
+    char *log = read_log();
+    CHECK(strstr(log, "no way to tell that Forge's menu is open"));
+    CHECK(strstr(log, "declines to load"));
+
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\nRequireGates = 0\n");
+    CHECK(load_module());
+    CHECK(fnhook_get(KBM_FN_PL_INPUT_UPDATE) != 0);
+    log = read_log();
+    CHECK(strstr(log, "menu gate: unavailable"));
+    g_mod.shutdown();
+}
+#endif
+
 int main(void) {
     void *base = mmap((void *)KBM_GUEST_BASE, 0x08100000u, PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
@@ -469,6 +511,10 @@ int main(void) {
     snprintf(g_dir, sizeof g_dir, "/tmp/kbm_test_XXXXXX");
     if (!mkdtemp(g_dir)) return 2;
 
+#ifdef MOCK_NO_MENU_GATE
+    test_no_menu_gate();
+    CHECK_REPORT("test_module (no menu gate)");
+#endif
     test_clean_flow();
     if (getenv("KBM_TEST_KEEP")) {
         printf("log dir: %s\n", g_dir);
@@ -484,5 +530,9 @@ int main(void) {
     test_declines();
     test_disabled();
     test_log_rotation();
-    CHECK_REPORT("test_module");
+#ifdef MOCK_OVERLAY_EXPORT
+    CHECK_REPORT("test_module (overlay_menu_open exported)");
+#else
+    CHECK_REPORT("test_module (SDL menu gate, as on 0.15.1 Windows)");
+#endif
 }
