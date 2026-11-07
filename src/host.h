@@ -20,9 +20,12 @@ typedef struct KbmHost {
     const bool *(*sdl_keyboard_state)(int *numkeys);
     int (*sdl_scancode_from_name)(const char *name);
     uint32_t (*sdl_mouse_state)(float *x, float *y);
+    void *(*sdl_keyboard_focus)(void);
+    bool (*sdl_text_input_active)(void *window);
 } KbmHost;
 
 extern KbmHost g_host;
 
 bool kbm_host_resolve(bool require_gates);
+bool kbm_host_menu_gate_available(void);
 bool kbm_guest_verify(void);
