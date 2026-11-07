@@ -30,6 +30,10 @@ on:
         description: MHGURecomp branch, tag or commit to check compatibility against
         type: string
         default: master
+      port_release:
+        description: MHGURecomp release whose Windows build is checked for the symbols the module needs (latest or a tag such as 0.15.1)
+        type: string
+        default: latest
       create_release:
         description: Publish the zips as a GitHub release
         type: boolean
@@ -70,11 +74,30 @@ jobs:
           path: port
       - name: Compare against the port's headers and symbols
         run: tools/check_port.sh port/runtime | tee compat.txt
+      - name: Install the PE reader
+        run: pip install pefile
+      - name: Download the released Windows build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ inputs.port_release }}"
+          if [ "$tag" = "latest" ]; then
+            tag="$(gh release view -R morerokk/MHGURecomp --json tagName -q .tagName)"
+          fi
+          echo "released build checked: $tag" | tee release.txt
+          gh release download "$tag" -R morerokk/MHGURecomp -p 'Windows-MHGURecomp.*.zip' -D dl
+          unzip -j dl/*.zip '*/mhgurecomp.exe' '*/SDL3.dll' -d exe
+      - name: Check what the released executable really exports
+        run: |
+          {
+            cat release.txt
+            python3 tools/check_exports.py exe/mhgurecomp.exe exe/SDL3.dll
+          } | tee -a compat.txt
       - name: Add the result to the run summary
         if: always()
         run: |
           {
-            echo "### Port compatibility (MHGURecomp ${{ inputs.port_ref }})"
+            echo "### Port compatibility (source ${{ inputs.port_ref }}, release ${{ inputs.port_release }})"
             echo
             echo '```'
             cat compat.txt
