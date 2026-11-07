@@ -55,7 +55,12 @@ static bool is_local(uint32_t pl) { return (kbm_ld32(pl + KBM_PL_IS_LOCAL_WORD) 
 static const char *gate_reason(void) {
     if (g_host.textinput_active && g_host.textinput_active()) return "text input";
     if (g_host.chat_active && g_host.chat_active()) return "chat";
-    if (g_host.overlay_menu_open && g_host.overlay_menu_open()) return "menu overlay";
+    if (g_host.overlay_menu_open) {
+        if (g_host.overlay_menu_open()) return "menu overlay";
+    } else if (g_host.sdl_keyboard_focus && g_host.sdl_text_input_active) {
+        void *window = g_host.sdl_keyboard_focus();
+        if (window && g_host.sdl_text_input_active(window)) return "menu or text entry";
+    }
     return NULL;
 }
 
