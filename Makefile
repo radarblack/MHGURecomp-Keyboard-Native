@@ -35,9 +35,11 @@ $(OUT)/windows/$(NAME).dll: $(SRC) src/*.h include/*.h
 
 TEST_SRC := src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/log.c src/platform.c
 
-test: $(OUT)/test_core $(OUT)/test_module
+test: $(OUT)/test_core $(OUT)/test_module $(OUT)/test_module_exported $(OUT)/test_module_nogate
 	$(OUT)/test_core
 	$(OUT)/test_module
+	$(OUT)/test_module_exported
+	$(OUT)/test_module_nogate
 
 $(OUT)/test_core: tests/test_core.c src/movement.c src/config.c src/keys.c src/log.c src/platform.c src/host.c src/*.h
 	@mkdir -p $(OUT)
@@ -46,6 +48,14 @@ $(OUT)/test_core: tests/test_core.c src/movement.c src/config.c src/keys.c src/l
 $(OUT)/test_module: tests/test_module.c src/module.c $(TEST_SRC) src/*.h
 	@mkdir -p $(OUT)
 	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) -D_GNU_SOURCE -rdynamic -o $@ tests/test_module.c src/module.c $(TEST_SRC) -ldl -lpthread
+
+$(OUT)/test_module_exported: tests/test_module.c src/module.c $(TEST_SRC) src/*.h
+	@mkdir -p $(OUT)
+	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) -DMOCK_OVERLAY_EXPORT -D_GNU_SOURCE -rdynamic -o $@ tests/test_module.c src/module.c $(TEST_SRC) -ldl -lpthread
+
+$(OUT)/test_module_nogate: tests/test_module.c src/module.c $(TEST_SRC) src/*.h
+	@mkdir -p $(OUT)
+	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) -DMOCK_NO_MENU_GATE -D_GNU_SOURCE -rdynamic -o $@ tests/test_module.c src/module.c $(TEST_SRC) -ldl -lpthread
 
 package-windows: windows
 	rm -rf $(OUT)/pkg-windows
