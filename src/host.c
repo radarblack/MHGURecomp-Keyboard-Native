@@ -52,7 +52,7 @@ bool kbm_host_resolve(bool require_gates) {
     g_host.chat_active = (bool (*)(void))find_port("chat_active");
     ok &= report("chat_active", (void *)g_host.chat_active, require_gates, "chat gate");
     g_host.overlay_menu_open = (bool (*)(void))find_port("overlay_menu_open");
-    ok &= report("overlay_menu_open", (void *)g_host.overlay_menu_open, require_gates, "menu gate");
+    report("overlay_menu_open", (void *)g_host.overlay_menu_open, false, "not exported by every build of the port");
 
     g_host.sdl_keyboard_state = (const bool *(*)(int *))find_sdl("SDL_GetKeyboardState");
     ok &= report("SDL_GetKeyboardState", (void *)g_host.sdl_keyboard_state, true, "keyboard state");
@@ -60,7 +60,28 @@ bool kbm_host_resolve(bool require_gates) {
     ok &= report("SDL_GetScancodeFromName", (void *)g_host.sdl_scancode_from_name, true, "key names from the port's ini");
     g_host.sdl_mouse_state = (uint32_t (*)(float *, float *))find_sdl("SDL_GetMouseState");
     report("SDL_GetMouseState", (void *)g_host.sdl_mouse_state, false, "mouse buttons cannot be used for movement");
+    g_host.sdl_keyboard_focus = (void *(*)(void))find_sdl("SDL_GetKeyboardFocus");
+    report("SDL_GetKeyboardFocus", (void *)g_host.sdl_keyboard_focus, false, "part of the menu gate fallback");
+    g_host.sdl_text_input_active = (bool (*)(void *))find_sdl("SDL_TextInputActive");
+    report("SDL_TextInputActive", (void *)g_host.sdl_text_input_active, false, "part of the menu gate fallback");
+
+    if (g_host.overlay_menu_open) {
+        KBM_LOG(KBM_LOG_INFO, "menu gate: the port's overlay_menu_open()");
+    } else if (g_host.sdl_keyboard_focus && g_host.sdl_text_input_active) {
+        KBM_LOG(KBM_LOG_INFO,
+            "menu gate: overlay_menu_open is not exported by this build, using SDL's text-input state instead (the port turns it on "
+            "whenever Forge's menu or the game's text entry is open)");
+    } else if (require_gates) {
+        KBM_LOG(KBM_LOG_ERROR, "menu gate: no way to tell that Forge's menu is open (set RequireGates = 0 to run without it)");
+        ok = false;
+    } else {
+        KBM_LOG(KBM_LOG_WARN, "menu gate: unavailable, movement keys will also act while Forge's menu is open");
+    }
     return ok;
+}
+
+bool kbm_host_menu_gate_available(void) {
+    return g_host.overlay_menu_open || (g_host.sdl_keyboard_focus && g_host.sdl_text_input_active);
 }
 
 bool kbm_guest_verify(void) {
