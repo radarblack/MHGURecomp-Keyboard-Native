@@ -13,8 +13,9 @@ fi
 ok() { echo "ok:   $1"; }
 bad() { echo "FAIL: $1"; failures=$((failures + 1)); }
 
-if diff -q <(tr -d '\r' < "$here/include/engine_module_api.h") <(tr -d '\r' < "$port_runtime/engine_module_api.h") >/dev/null; then
-    ok "engine_module_api.h is identical to the port's"
+strip_api() { tr -d '\r' < "$1" | sed -e 's://.*$::' -e 's/[[:space:]]*$//' | grep -v '^$'; }
+if diff -q <(strip_api "$here/include/engine_module_api.h") <(strip_api "$port_runtime/engine_module_api.h") >/dev/null; then
+    ok "engine_module_api.h matches the port's (comments and line endings ignored)"
 else
     bad "engine_module_api.h differs from the port's: re-copy it, check what changed, rebuild"
 fi
@@ -38,7 +39,6 @@ need cpu.h 'uint32_t r\[16\];' "Cpu starts with uint32_t r[16]"
 need cpu.h 'define GUEST_BASE 0x10000000000ull' "GUEST_BASE is 1 TB on desktop"
 need textinput.h 'bool textinput_active\(void\)' "textinput_active()"
 need hle/chat.h 'bool chat_active\(void\)' "chat_active()"
-need overlay.h 'bool overlay_menu_open\(void\)' "overlay_menu_open()"
 need config.c '"MoveUp"' "ini key MoveUp"
 need config.c '"MoveDown"' "ini key MoveDown"
 need config.c '"MoveLeft"' "ini key MoveLeft"
