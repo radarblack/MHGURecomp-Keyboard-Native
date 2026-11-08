@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "boot.h"
 #include "config.h"
 #include "driver.h"
 #include "engine_module_api.h"
@@ -44,7 +45,8 @@ static void abort_load(const char *why) {
 static void module_shutdown(void) {
     if (g_shutdown_done) return;
     g_shutdown_done = true;
-    KBM_LOG(KBM_LOG_INFO, "shutdown: clean exit requested by the port");
+    KBM_LOG(KBM_LOG_INFO, "shutdown: clean exit requested by the port (state: %s)", kbm_boot_state_name(kbm_boot_state()));
+    kbm_boot_stop();
     kbm_driver_log_stats(KBM_LOG_INFO, "final");
     kbm_hooks_remove();
     int left = kbm_hooks_installed_count();
@@ -99,18 +101,14 @@ MHGU_ENGINE_MODULE_EXPORT bool mhgu_engine_module_entry(const MhguHost *host, Mh
         abort_load("a required port or SDL symbol is missing (see the lines above)");
         return false;
     }
-    if (!kbm_guest_verify()) {
-        abort_load("the game code does not match what the module was written for (see the lines above)");
-        return false;
-    }
     if (!kbm_keys_init(&g_cfg, host->setting)) {
         abort_load("the movement keys could not be resolved");
         return false;
     }
 
     kbm_driver_reset();
-    if (!kbm_hooks_install()) {
-        abort_load("a hook could not be installed");
+    if (!kbm_boot_start()) {
+        abort_load("the thread that waits for the game could not be started");
         return false;
     }
 
@@ -119,8 +117,7 @@ MHGU_ENGINE_MODULE_EXPORT bool mhgu_engine_module_entry(const MhguHost *host, Mh
         out->shutdown = module_shutdown;
     }
     g_loaded = true;
-    KBM_LOG(KBM_LOG_INFO, "ready: %d hook(s) installed, mode=%s", kbm_hooks_installed_count(),
-        g_cfg.mode == KBM_MODE_DIRECT ? "direct" : "passthrough");
+    KBM_LOG(KBM_LOG_INFO, "entry done: the hooks go in as soon as the game is loaded");
     return true;
 }
 
