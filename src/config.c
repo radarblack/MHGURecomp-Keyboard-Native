@@ -16,6 +16,7 @@ void kbm_config_defaults(KbmConfig *cfg, KbmLogLevel default_level) {
     cfg->log_level = default_level;
     cfg->log_file = true;
     cfg->stats_interval_s = 10;
+    cfg->hook_wait_s = 600;
     cfg->strict_version = false;
     cfg->require_gates = true;
     cfg->mode = KBM_MODE_DIRECT;
@@ -95,6 +96,11 @@ static void apply(KbmConfig *cfg, const char *key, const char *val, int line) {
         long v = strtol(val, &end, 10);
         if (end != val && v >= 0 && v <= 3600) cfg->stats_interval_s = (uint32_t)v;
         else goto bad;
+    } else if (!strcasecmp(key, "HookWaitSeconds")) {
+        char *end;
+        long v = strtol(val, &end, 10);
+        if (end != val && v >= 1 && v <= 86400) cfg->hook_wait_s = (uint32_t)v;
+        else goto bad;
     } else if (!strcasecmp(key, "StrictVersion")) {
         if (kbm_parse_bool(val, &b)) cfg->strict_version = b;
         else goto bad;
@@ -168,7 +174,8 @@ void kbm_config_log(const KbmConfig *cfg) {
     KBM_LOG(KBM_LOG_INFO, "config: enabled=%d mode=%s opposite_keys=%s snap_facing=%d snap_scope=%s log_level=%s log_file=%d",
         cfg->enabled, mode_name(cfg->mode), cfg->socd == KBM_SOCD_LAST ? "last" : "neutral", cfg->snap_facing,
         cfg->snap_scope == KBM_SCOPE_UPDATE ? "update" : "all", kbm_log_level_name(cfg->log_level), cfg->log_file);
-    KBM_LOG(KBM_LOG_INFO, "config: require_gates=%d strict_version=%d stats_interval=%us keys_from_port=%d snap_allow=%d snap_deny=%d",
-        cfg->require_gates, cfg->strict_version, (unsigned)cfg->stats_interval_s, cfg->keys_from_port, cfg->n_allow,
-        cfg->n_deny);
+    KBM_LOG(KBM_LOG_INFO,
+        "config: require_gates=%d strict_version=%d stats_interval=%us hook_wait=%us keys_from_port=%d snap_allow=%d snap_deny=%d",
+        cfg->require_gates, cfg->strict_version, (unsigned)cfg->stats_interval_s, (unsigned)cfg->hook_wait_s, cfg->keys_from_port,
+        cfg->n_allow, cfg->n_deny);
 }
