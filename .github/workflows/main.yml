@@ -123,6 +123,11 @@ jobs:
           echo "level=KBM_LOG_$(echo '${{ inputs.log_level }}' | tr a-z A-Z)" >> "$GITHUB_OUTPUT"
       - name: Build the DLL and package it
         run: make package-windows BUILD=${{ inputs.build_type }} VERSION="${{ steps.ver.outputs.version }}" LOG_LEVEL=${{ steps.ver.outputs.level }}
+      - name: Install Wine for the smoke test
+        run: sudo apt-get install -y --no-install-recommends wine64
+      - name: Run the Windows DLL against a mock port under Wine
+        timeout-minutes: 10
+        run: make test-wine BUILD=${{ inputs.build_type }} VERSION="${{ steps.ver.outputs.version }}" LOG_LEVEL=${{ steps.ver.outputs.level }} WINE=/usr/lib/wine/wine64 WINEPREFIX=/tmp/wine-kbm
       - name: Show what was built
         run: |
           ls -l build/pkg-windows/engine_modules/${MODULE_NAME}
