@@ -1,10 +1,10 @@
 NAME      := keyboard_movement
-VERSION   ?= 0.1.0
+VERSION   ?= $(shell cat VERSION)
 LOG_LEVEL ?= KBM_LOG_INFO
 BUILD     ?= release
 OUT       ?= build
 
-SRC := src/module.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/log.c src/platform.c
+SRC := src/module.c src/boot.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/log.c src/platform.c
 OBJ_FLAGS_COMMON := -std=c11 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden -Iinclude -Isrc \
     -DKBM_VERSION='"$(VERSION)"' -DKBM_DEFAULT_LOG_LEVEL=$(LOG_LEVEL)
 
@@ -14,10 +14,12 @@ else
 OPT := -O2
 endif
 
+TEST_FLAGS := -DKBM_POLL_MS=5 -DKBM_NOTE_MS=50
 LINUX_CC   ?= gcc
 WINDOWS_CC ?= x86_64-w64-mingw32-gcc
+WINE       ?= $(shell command -v wine64 2>/dev/null || command -v wine 2>/dev/null || echo /usr/lib/wine/wine64)
 
-.PHONY: all linux windows test package-windows package-linux clean
+.PHONY: all linux windows test test-wine package-windows package-linux clean
 
 all: linux
 
@@ -33,13 +35,14 @@ $(OUT)/windows/$(NAME).dll: $(SRC) src/*.h include/*.h
 	@mkdir -p $(dir $@)
 	$(WINDOWS_CC) $(OPT) $(OBJ_FLAGS_COMMON) -shared -static-libgcc -o $@ $(SRC)
 
-TEST_SRC := src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/log.c src/platform.c
+TEST_SRC := src/boot.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/log.c src/platform.c
 
-test: $(OUT)/test_core $(OUT)/test_module $(OUT)/test_module_exported $(OUT)/test_module_nogate
+test: $(OUT)/test_core $(OUT)/test_module $(OUT)/test_module_exported $(OUT)/test_module_nogate $(OUT)/test_module_nodispatch
 	$(OUT)/test_core
 	$(OUT)/test_module
 	$(OUT)/test_module_exported
 	$(OUT)/test_module_nogate
+	$(OUT)/test_module_nodispatch
 
 $(OUT)/test_core: tests/test_core.c src/movement.c src/config.c src/keys.c src/log.c src/platform.c src/host.c src/*.h
 	@mkdir -p $(OUT)
@@ -47,15 +50,26 @@ $(OUT)/test_core: tests/test_core.c src/movement.c src/config.c src/keys.c src/l
 
 $(OUT)/test_module: tests/test_module.c src/module.c $(TEST_SRC) src/*.h
 	@mkdir -p $(OUT)
-	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) -D_GNU_SOURCE -rdynamic -o $@ tests/test_module.c src/module.c $(TEST_SRC) -ldl -lpthread
+	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) $(TEST_FLAGS) -D_GNU_SOURCE -rdynamic -o $@ tests/test_module.c src/module.c $(TEST_SRC) -ldl -lpthread
 
 $(OUT)/test_module_exported: tests/test_module.c src/module.c $(TEST_SRC) src/*.h
 	@mkdir -p $(OUT)
-	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) -DMOCK_OVERLAY_EXPORT -D_GNU_SOURCE -rdynamic -o $@ tests/test_module.c src/module.c $(TEST_SRC) -ldl -lpthread
+	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) -DMOCK_OVERLAY_EXPORT $(TEST_FLAGS) -D_GNU_SOURCE -rdynamic -o $@ tests/test_module.c src/module.c $(TEST_SRC) -ldl -lpthread
 
 $(OUT)/test_module_nogate: tests/test_module.c src/module.c $(TEST_SRC) src/*.h
 	@mkdir -p $(OUT)
-	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) -DMOCK_NO_MENU_GATE -D_GNU_SOURCE -rdynamic -o $@ tests/test_module.c src/module.c $(TEST_SRC) -ldl -lpthread
+	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) -DMOCK_NO_MENU_GATE $(TEST_FLAGS) -D_GNU_SOURCE -rdynamic -o $@ tests/test_module.c src/module.c $(TEST_SRC) -ldl -lpthread
+
+$(OUT)/test_module_nodispatch: tests/test_module.c src/module.c $(TEST_SRC) src/*.h
+	@mkdir -p $(OUT)
+	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) -DMOCK_NO_DISPATCH $(TEST_FLAGS) -D_GNU_SOURCE -rdynamic -o $@ tests/test_module.c src/module.c $(TEST_SRC) -ldl -lpthread
+
+test-wine: windows
+	mkdir -p $(OUT)/win/engine_modules/$(NAME)
+	$(WINDOWS_CC) -shared -o $(OUT)/win/SDL3.dll tests/win/mock_sdl.c
+	$(WINDOWS_CC) -O1 -Iinclude -Isrc -o $(OUT)/win/winhost.exe tests/win/winhost.c -Wl,--export-all-symbols
+	cp $(OUT)/windows/$(NAME).dll $(OUT)/win/engine_modules/$(NAME)/
+	cd $(OUT)/win && WINEDEBUG=-all WINEPREFIX=$${WINEPREFIX:-$$HOME/.wine-kbm} $(WINE) winhost.exe
 
 package-windows: windows
 	rm -rf $(OUT)/pkg-windows
