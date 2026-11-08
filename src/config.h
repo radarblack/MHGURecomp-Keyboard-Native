@@ -22,6 +22,7 @@ typedef struct KbmConfig {
     KbmLogLevel log_level;
     bool log_file;
     uint32_t stats_interval_s;
+    uint32_t hook_wait_s;
     bool strict_version;
     bool require_gates;
     KbmMode mode;
