@@ -47,6 +47,8 @@ bool kbm_host_resolve(bool require_gates) {
     g_host.guest_call = (void (*)(KbmCpu *, uint32_t))find_port("guest_call");
     ok &= report("guest_call", (void *)g_host.guest_call, false, "only needed by later features");
 
+    g_host.dispatch_lookup = (void *(*)(uint32_t))find_port("dispatch_lookup");
+    report("dispatch_lookup", (void *)g_host.dispatch_lookup, false, "without it the module polls the game's memory instead");
     g_host.textinput_active = (bool (*)(void))find_port("textinput_active");
     ok &= report("textinput_active", (void *)g_host.textinput_active, require_gates, "typing gate");
     g_host.chat_active = (bool (*)(void))find_port("chat_active");
@@ -108,4 +110,14 @@ bool kbm_guest_verify(void) {
         }
     }
     return ok;
+}
+
+bool kbm_guest_signatures_match(void) {
+    for (size_t i = 0; i < KBM_GUEST_SIG_COUNT; i++) {
+        const KbmGuestSig *s = &kbm_guest_sigs[i];
+        if (!kbm_readable(KBM_GPTR(s->addr), sizeof(uint32_t) * KBM_SIG_WORDS)) return false;
+        for (int w = 0; w < KBM_SIG_WORDS; w++)
+            if (kbm_ld32(s->addr + 4u * (uint32_t)w) != s->words[w]) return false;
+    }
+    return true;
 }
