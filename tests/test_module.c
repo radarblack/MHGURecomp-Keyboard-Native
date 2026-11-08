@@ -6,6 +6,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include "boot.h"
 #include "check.h"
 #include "engine_module_api.h"
 #include "guest.h"
@@ -35,6 +36,7 @@ static bool g_chat, g_typing, g_menu;
 static int g_port_angle, g_port_mag;
 static uint32_t g_camera_yaw;
 static int g_other_calls;
+static bool g_dispatch_ready;
 
 MOCK_EXPORT uint32_t hle_register(const char *name, KbmHostFn fn) {
     for (int i = 0; i < g_nhle; i++)
@@ -82,6 +84,12 @@ MOCK_EXPORT void guest_call(KbmCpu *c, uint32_t addr) {
     }
 }
 
+#ifndef MOCK_NO_DISPATCH
+MOCK_EXPORT void *dispatch_lookup(uint32_t addr) {
+    (void)addr;
+    return g_dispatch_ready ? (void *)(uintptr_t)1 : NULL;
+}
+#endif
 MOCK_EXPORT bool textinput_active(void) { return g_typing; }
 MOCK_EXPORT bool chat_active(void) { return g_chat; }
 #ifdef MOCK_OVERLAY_EXPORT
@@ -150,6 +158,7 @@ static void reset_world(void) {
     g_port_mag = 0;
     g_camera_yaw = 0x1000;
     g_other_calls = 0;
+    g_dispatch_ready = true;
     for (size_t i = 0; i < KBM_GUEST_SIG_COUNT; i++) put_words(kbm_guest_sigs[i].addr, kbm_guest_sigs[i].words);
     kbm_st32(PLAYER + KBM_PL_IS_LOCAL_WORD, 1);
     kbm_st32(PLAYER + KBM_PL_REVERSED_WORD, 0);
@@ -174,11 +183,26 @@ static void write_ini(const char *text) {
     fclose(f);
 }
 
-static bool load_module(void) {
+static bool wait_terminal(unsigned timeout_ms) {
+    for (unsigned waited = 0; waited < timeout_ms; waited += 5) {
+        if (kbm_boot_state() != KBM_BOOT_WAITING) break;
+        usleep(5000);
+    }
+    return kbm_boot_state() == KBM_BOOT_ACTIVE;
+}
+
+static bool start_module(void) {
     memset(&g_mod, 0, sizeof g_mod);
     g_host_tbl = (MhguHost){.api = MHGU_ENGINE_MODULE_API, .log = host_log, .setting = host_setting, .module_dir = g_dir,
-        .port_version = "0.14.0-9-gabcdef0"};
+        .port_version = "0.15.1"};
     return mhgu_engine_module_entry(&g_host_tbl, &g_mod);
+}
+
+static bool load_module(void) {
+    if (!start_module()) return false;
+    if (wait_terminal(3000)) return true;
+    if (g_mod.shutdown) g_mod.shutdown();
+    return false;
 }
 
 static void call_hooked(uint32_t fn_addr) {
@@ -439,19 +463,21 @@ static void test_superseded(void) {
 }
 
 static void test_declines(void) {
+#ifndef MOCK_NO_DISPATCH
     reset_world();
     write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n");
     kbm_st32(KBM_FN_FACE_STICK, 0xdeadbeefu);
     CHECK(!load_module());
+    CHECK(kbm_boot_state() == KBM_BOOT_FAILED);
     CHECK_EQ(fnhook_get(KBM_FN_PL_INPUT_UPDATE), 0);
     CHECK_EQ(fnhook_get(KBM_FN_FACE_STICK), 0);
     char *log = read_log();
     CHECK(strstr(log, "signature MISMATCH"));
-    CHECK(strstr(log, "declines to load"));
+    CHECK(strstr(log, "module is inactive"));
+#endif
 
     reset_world();
     write_ini("[General]\nStrictVersion = 1\n");
-    g_host_tbl.port_version = "9.9.9";
     memset(&g_mod, 0, sizeof g_mod);
     g_host_tbl = (MhguHost){.api = MHGU_ENGINE_MODULE_API, .log = host_log, .setting = host_setting, .module_dir = g_dir,
         .port_version = "9.9.9"};
@@ -459,10 +485,73 @@ static void test_declines(void) {
     CHECK_EQ(fnhook_get(KBM_FN_PL_INPUT_UPDATE), 0);
 }
 
+static void unload_game(void) {
+    g_dispatch_ready = false;
+    for (size_t i = 0; i < KBM_GUEST_SIG_COUNT; i++) {
+        uint32_t zero[KBM_SIG_WORDS] = {0, 0, 0};
+        put_words(kbm_guest_sigs[i].addr, zero);
+    }
+}
+
+static void test_delayed_load(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = debug\nStatsIntervalSeconds = 0\n");
+    unload_game();
+    CHECK(start_module());
+    CHECK(g_mod.shutdown != NULL);
+    usleep(60000);
+    CHECK(kbm_boot_state() == KBM_BOOT_WAITING);
+    CHECK_EQ(fnhook_get(KBM_FN_PL_INPUT_UPDATE), 0);
+    CHECK_EQ(fnhook_get(KBM_FN_FACE_STICK), 0);
+
+    for (size_t i = 0; i < KBM_GUEST_SIG_COUNT; i++) put_words(kbm_guest_sigs[i].addr, kbm_guest_sigs[i].words);
+    g_dispatch_ready = true;
+    CHECK(wait_terminal(3000));
+    CHECK(fnhook_get(KBM_FN_PL_INPUT_UPDATE) != 0);
+    CHECK(fnhook_get(KBM_FN_FACE_STICK) != 0);
+
+    g_keys[K_W] = true;
+    g_port_angle = 0x4000;
+    g_port_mag = 150;
+    frame();
+    CHECK_EQ(yaw_actual(), yaw_target());
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "waiting for the game to load"));
+    CHECK(strstr(log, "the game is loaded"));
+    CHECK(strstr(log, "ready: 2 hook(s) installed"));
+}
+
+static void test_shutdown_while_waiting(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n");
+    unload_game();
+    CHECK(start_module());
+    usleep(30000);
+    g_mod.shutdown();
+    CHECK(kbm_boot_state() == KBM_BOOT_STOPPED);
+    CHECK_EQ(fnhook_get(KBM_FN_PL_INPUT_UPDATE), 0);
+    char *log = read_log();
+    CHECK(strstr(log, "stop requested while waiting"));
+    CHECK(strstr(log, "shutdown complete"));
+}
+
+static void test_wait_timeout(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\nHookWaitSeconds = 1\n");
+    unload_game();
+    CHECK(start_module());
+    CHECK(!wait_terminal(4000));
+    CHECK(kbm_boot_state() == KBM_BOOT_FAILED);
+    char *log = read_log();
+    CHECK(strstr(log, "did not become ready in time"));
+    g_mod.shutdown();
+}
+
 static void test_disabled(void) {
     reset_world();
     write_ini("[General]\nEnabled = 0\n");
-    CHECK(load_module());
+    CHECK(start_module());
     CHECK_EQ(fnhook_get(KBM_FN_PL_INPUT_UPDATE), 0);
     CHECK_EQ(fnhook_get(KBM_FN_FACE_STICK), 0);
     char *log = read_log();
@@ -515,6 +604,13 @@ int main(void) {
     test_no_menu_gate();
     CHECK_REPORT("test_module (no menu gate)");
 #endif
+#ifdef MOCK_NO_DISPATCH
+    test_clean_flow();
+    test_delayed_load();
+    test_shutdown_while_waiting();
+    test_wait_timeout();
+    CHECK_REPORT("test_module (no dispatch_lookup: polls memory)");
+#endif
     test_clean_flow();
     if (getenv("KBM_TEST_KEEP")) {
         printf("log dir: %s\n", g_dir);
@@ -528,6 +624,9 @@ int main(void) {
     test_chaining();
     test_superseded();
     test_declines();
+    test_delayed_load();
+    test_shutdown_while_waiting();
+    test_wait_timeout();
     test_disabled();
     test_log_rotation();
 #ifdef MOCK_OVERLAY_EXPORT
