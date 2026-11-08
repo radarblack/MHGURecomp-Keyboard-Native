@@ -8,6 +8,31 @@ void kbm_mutex_unlock(KbmMutex *m) { LeaveCriticalSection(m); }
 uint64_t kbm_now_ms(void) { return (uint64_t)GetTickCount64(); }
 uint32_t kbm_thread_id(void) { return (uint32_t)GetCurrentThreadId(); }
 
+
+static DWORD WINAPI thread_main(LPVOID p) {
+    KbmThread *t = (KbmThread *)p;
+    t->fn(t->arg);
+    return 0;
+}
+
+bool kbm_thread_start(KbmThread *t, KbmThreadFn fn, void *arg) {
+    t->fn = fn;
+    t->arg = arg;
+    t->handle = CreateThread(NULL, 0, thread_main, t, 0, NULL);
+    t->started = t->handle != NULL;
+    return t->started;
+}
+
+bool kbm_thread_join(KbmThread *t, unsigned timeout_ms) {
+    if (!t->started) return true;
+    if (WaitForSingleObject(t->handle, timeout_ms) != WAIT_OBJECT_0) return false;
+    CloseHandle(t->handle);
+    t->started = false;
+    return true;
+}
+
+void kbm_sleep_ms(unsigned ms) { Sleep(ms); }
+
 void *kbm_find_symbol(const char *name) {
     HMODULE exe = GetModuleHandleA(NULL);
     return exe ? (void *)GetProcAddress(exe, name) : NULL;
@@ -58,6 +83,40 @@ uint64_t kbm_now_ms(void) {
 }
 
 uint32_t kbm_thread_id(void) { return (uint32_t)syscall(SYS_gettid); }
+
+
+static void *thread_main(void *p) {
+    KbmThread *t = (KbmThread *)p;
+    t->fn(t->arg);
+    return NULL;
+}
+
+bool kbm_thread_start(KbmThread *t, KbmThreadFn fn, void *arg) {
+    t->fn = fn;
+    t->arg = arg;
+    t->started = pthread_create(&t->thread, NULL, thread_main, t) == 0;
+    return t->started;
+}
+
+bool kbm_thread_join(KbmThread *t, unsigned timeout_ms) {
+    if (!t->started) return true;
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += timeout_ms / 1000;
+    ts.tv_nsec += (long)(timeout_ms % 1000) * 1000000L;
+    if (ts.tv_nsec >= 1000000000L) {
+        ts.tv_sec++;
+        ts.tv_nsec -= 1000000000L;
+    }
+    if (pthread_timedjoin_np(t->thread, NULL, &ts) != 0) return false;
+    t->started = false;
+    return true;
+}
+
+void kbm_sleep_ms(unsigned ms) {
+    struct timespec ts = {ms / 1000, (long)(ms % 1000) * 1000000L};
+    nanosleep(&ts, NULL);
+}
 
 void *kbm_find_symbol(const char *name) { return dlsym(RTLD_DEFAULT, name); }
 
