@@ -74,10 +74,10 @@ void kbm_driver_log_stats(KbmLogLevel level, const char *why) {
         (unsigned long long)s->mag_from_game, (unsigned long long)s->mag_from_learned, (unsigned long long)s->mag_from_default,
         g_learned[1], g_learned[2]);
     KBM_LOG(level,
-        "stats (%s): face calls=%llu not_driving=%llu not_local=%llu skipped_scope=%llu skipped_act=%llu no_change=%llu snaps=%llu snap_reversals=%llu",
+        "stats (%s): face calls=%llu not_driving=%llu not_local=%llu skipped_scope=%llu skipped_act=%llu no_change=%llu turns=%llu partial=%llu reversals=%llu",
         why, (unsigned long long)s->face_calls, (unsigned long long)s->face_not_driving, (unsigned long long)s->face_not_local,
         (unsigned long long)s->face_skipped_scope, (unsigned long long)s->face_skipped_act, (unsigned long long)s->face_no_change,
-        (unsigned long long)s->snaps, (unsigned long long)s->snap_reversals);
+        (unsigned long long)s->snaps, (unsigned long long)s->turn_partial, (unsigned long long)s->snap_reversals);
 }
 
 static void maybe_stats(void) {
@@ -203,7 +203,13 @@ static void note_act(uint16_t st, uint16_t no, unsigned phase, uint16_t before, 
 
 void kbm_driver_on_face(uint32_t pl) {
     g_stats.face_calls++;
-    if (!g_cfg.snap_facing) return;
+    if (!g_cfg.snap_facing || g_cfg.turn_mode == KBM_TURN_GAME) return;
+    unsigned phase = (kbm_ld32(pl + KBM_PL_PHASE_WORD) & 0xffffu) >> 8;
+    uint16_t st = kbm_ld16(pl + KBM_PL_ACT_ST);
+    uint16_t no = kbm_ld16(pl + KBM_PL_ACT_NO);
+    uint16_t actual = (uint16_t)kbm_ld32(pl + KBM_PL_YAW_ACTUAL);
+    uint16_t target = (uint16_t)(kbm_ld32(pl + KBM_PL_YAW_TARGET) & 0xffffu);
+    note_act(st, no, phase, actual, target);
     if (!g_driving) {
         g_stats.face_not_driving++;
         return;
@@ -212,12 +218,6 @@ void kbm_driver_on_face(uint32_t pl) {
         g_stats.face_not_local++;
         return;
     }
-    unsigned phase = (kbm_ld32(pl + KBM_PL_PHASE_WORD) & 0xffffu) >> 8;
-    uint16_t st = kbm_ld16(pl + KBM_PL_ACT_ST);
-    uint16_t no = kbm_ld16(pl + KBM_PL_ACT_NO);
-    uint16_t actual = (uint16_t)kbm_ld32(pl + KBM_PL_YAW_ACTUAL);
-    uint16_t target = (uint16_t)(kbm_ld32(pl + KBM_PL_YAW_TARGET) & 0xffffu);
-    note_act(st, no, phase, actual, target);
 
     if (g_cfg.snap_scope == KBM_SCOPE_UPDATE && phase < 1) {
         g_stats.face_skipped_scope++;
@@ -233,9 +233,12 @@ void kbm_driver_on_face(uint32_t pl) {
         return;
     }
     uint16_t delta = kbm_angle_delta(actual, target);
-    kbm_st32(pl + KBM_PL_YAW_ACTUAL, target);
+    uint16_t next = g_cfg.turn_mode == KBM_TURN_SNAP ? target : kbm_turn_step(actual, target, &g_cfg.turn);
+    kbm_st32(pl + KBM_PL_YAW_ACTUAL, next);
     g_stats.snaps++;
+    if (next != target) g_stats.turn_partial++;
     if (delta >= 0x5000) g_stats.snap_reversals++;
     KbmLogLevel lv = g_stats.snaps <= FIRST_SNAPS_AT_INFO ? KBM_LOG_INFO : KBM_LOG_TRACE;
-    KBM_LOG(lv, "snap yaw %04x -> %04x (delta %04x) action %04x:%03u phase %u", actual, target, delta, st, no, phase);
+    KBM_LOG(lv, "turn yaw %04x -> %04x (target %04x, delta %04x, %s) action %04x:%03u phase %u", actual, next, target, delta,
+        next == target ? "reached" : "partial", st, no, phase);
 }
