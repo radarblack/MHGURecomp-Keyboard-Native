@@ -64,3 +64,22 @@ uint16_t kbm_angle_delta(uint16_t a, uint16_t b) {
 }
 
 bool kbm_angle_reversal(uint16_t from, uint16_t to) { return kbm_angle_delta(from, to) >= 0x5000; }
+
+uint16_t kbm_degrees_to_units(double degrees) {
+    double u = degrees * 65536.0 / 360.0 + 0.5;
+    if (u < 0.0) return 0;
+    if (u > 65535.0) return 65535;
+    return (uint16_t)u;
+}
+
+uint16_t kbm_turn_step(uint16_t actual, uint16_t target, const KbmTurn *turn) {
+    int32_t d = (int16_t)(uint16_t)(target - actual);
+    uint32_t ad = (uint32_t)(d < 0 ? -d : d);
+    if (ad == 0) return target;
+    uint32_t step = (uint32_t)(((uint64_t)ad * turn->response_q16) >> 16);
+    if (step < turn->min_step) step = turn->min_step;
+    if (step < 1) step = 1;
+    if (turn->max_step && step > turn->max_step) step = turn->max_step;
+    if (step >= ad) return target;
+    return (uint16_t)(d > 0 ? actual + step : actual - step);
+}
