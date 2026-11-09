@@ -1,15 +1,18 @@
 #include "hooks.h"
 
+#include "config.h"
 #include "driver.h"
 #include "guest.h"
 #include "log.h"
 
 static void detour_input(KbmCpu *c);
+static void detour_input_alt(KbmCpu *c);
 static void detour_face(KbmCpu *c);
 
 KbmHook g_hooks[KBM_H_COUNT] = {
-    {"keyboard_movement:player_input", KBM_FN_PL_INPUT_UPDATE, detour_input, 0, 0, false, false, false, 0},
-    {"keyboard_movement:face_stick", KBM_FN_FACE_STICK, detour_face, 0, 0, false, false, false, 0},
+    {"keyboard_movement:player_input", KBM_FN_PL_INPUT_UPDATE, detour_input, 0, 0, true, false, false, false, 0},
+    {"keyboard_movement:player_input_alt", KBM_FN_PL_INPUT_UPDATE_ALT, detour_input_alt, 0, 0, true, false, false, false, 0},
+    {"keyboard_movement:face_stick", KBM_FN_FACE_STICK, detour_face, 0, 0, true, false, false, false, 0},
 };
 
 static void call_next(KbmCpu *c, KbmHook *h) {
@@ -27,6 +30,14 @@ static void note_call(KbmHook *h, uint32_t player) {
 
 static void detour_input(KbmCpu *c) {
     KbmHook *h = &g_hooks[KBM_H_INPUT];
+    uint32_t player = c->r[0];
+    note_call(h, player);
+    call_next(c, h);
+    if (!h->passthrough) kbm_driver_on_input(player);
+}
+
+static void detour_input_alt(KbmCpu *c) {
+    KbmHook *h = &g_hooks[KBM_H_INPUT_ALT];
     uint32_t player = c->r[0];
     note_call(h, player);
     call_next(c, h);
@@ -75,6 +86,7 @@ static bool install_one(KbmHook *h) {
 
 bool kbm_hooks_install(void) {
     for (int i = 0; i < KBM_H_COUNT; i++) {
+        g_hooks[i].enabled = i != KBM_H_INPUT_ALT || g_cfg.safe_area_hook;
         g_hooks[i].detour = 0;
         g_hooks[i].prev = 0;
         g_hooks[i].installed = false;
@@ -83,6 +95,10 @@ bool kbm_hooks_install(void) {
         g_hooks[i].calls = 0;
     }
     for (int i = 0; i < KBM_H_COUNT; i++) {
+        if (!g_hooks[i].enabled) {
+            KBM_LOG(KBM_LOG_INFO, "hook %s: turned off by the config (SafeAreaHook = 0)", g_hooks[i].name);
+            continue;
+        }
         if (!install_one(&g_hooks[i])) {
             KBM_LOG(KBM_LOG_ERROR, "hook install failed at %s: removing the ones already installed", g_hooks[i].name);
             kbm_hooks_remove();
