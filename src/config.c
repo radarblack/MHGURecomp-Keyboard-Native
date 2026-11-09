@@ -22,6 +22,12 @@ void kbm_config_defaults(KbmConfig *cfg, KbmLogLevel default_level) {
     cfg->mode = KBM_MODE_DIRECT;
     cfg->socd = KBM_SOCD_LAST;
     cfg->snap_facing = true;
+    cfg->turn_mode = KBM_TURN_SMOOTH;
+    cfg->turn_response = 0.6;
+    cfg->turn_min_deg = 12.0;
+    cfg->turn_max_deg = 60.0;
+    cfg->safe_area_hook = true;
+    kbm_config_finalize(cfg);
     cfg->snap_scope = KBM_SCOPE_UPDATE;
     cfg->keys_from_port = true;
 }
@@ -118,6 +124,29 @@ static void apply(KbmConfig *cfg, const char *key, const char *val, int line) {
     } else if (!strcasecmp(key, "SnapFacing")) {
         if (kbm_parse_bool(val, &b)) cfg->snap_facing = b;
         else goto bad;
+    } else if (!strcasecmp(key, "TurnMode")) {
+        if (!strcasecmp(val, "smooth")) cfg->turn_mode = KBM_TURN_SMOOTH;
+        else if (!strcasecmp(val, "snap")) cfg->turn_mode = KBM_TURN_SNAP;
+        else if (!strcasecmp(val, "game")) cfg->turn_mode = KBM_TURN_GAME;
+        else goto bad;
+    } else if (!strcasecmp(key, "TurnResponse")) {
+        char *end;
+        double v = strtod(val, &end);
+        if (end != val && v >= 0.05 && v <= 1.0) cfg->turn_response = v;
+        else goto bad;
+    } else if (!strcasecmp(key, "TurnMinStepDegrees")) {
+        char *end;
+        double v = strtod(val, &end);
+        if (end != val && v >= 0.0 && v <= 90.0) cfg->turn_min_deg = v;
+        else goto bad;
+    } else if (!strcasecmp(key, "TurnMaxStepDegrees")) {
+        char *end;
+        double v = strtod(val, &end);
+        if (end != val && v >= 0.0 && v <= 360.0) cfg->turn_max_deg = v;
+        else goto bad;
+    } else if (!strcasecmp(key, "SafeAreaHook")) {
+        if (kbm_parse_bool(val, &b)) cfg->safe_area_hook = b;
+        else goto bad;
     } else if (!strcasecmp(key, "SnapScope")) {
         if (!strcasecmp(val, "update")) cfg->snap_scope = KBM_SCOPE_UPDATE;
         else if (!strcasecmp(val, "all")) cfg->snap_scope = KBM_SCOPE_ALL;
@@ -165,8 +194,23 @@ bool kbm_config_load(KbmConfig *cfg, const char *path) {
         apply(cfg, trim(s), trim(eq + 1), n);
     }
     fclose(f);
+    kbm_config_finalize(cfg);
     return true;
 }
+
+void kbm_config_finalize(KbmConfig *cfg) {
+    if (cfg->turn_max_deg > 0.0 && cfg->turn_max_deg < cfg->turn_min_deg) {
+        KBM_LOG(KBM_LOG_WARN, "TurnMaxStepDegrees (%.1f) is below TurnMinStepDegrees (%.1f): using the minimum as the maximum",
+            cfg->turn_max_deg, cfg->turn_min_deg);
+        cfg->turn_max_deg = cfg->turn_min_deg;
+    }
+    double r = cfg->turn_response * 65536.0;
+    cfg->turn.response_q16 = r >= 65536.0 ? 65536u : (r < 1.0 ? 1u : (uint32_t)r);
+    cfg->turn.min_step = kbm_degrees_to_units(cfg->turn_min_deg);
+    cfg->turn.max_step = cfg->turn_max_deg > 0.0 ? kbm_degrees_to_units(cfg->turn_max_deg) : 0;
+}
+
+static const char *turn_mode_name(KbmTurnMode m) { return m == KBM_TURN_SMOOTH ? "smooth" : m == KBM_TURN_SNAP ? "snap" : "game"; }
 
 static const char *mode_name(KbmMode m) { return m == KBM_MODE_DIRECT ? "direct" : "passthrough"; }
 
@@ -174,6 +218,9 @@ void kbm_config_log(const KbmConfig *cfg) {
     KBM_LOG(KBM_LOG_INFO, "config: enabled=%d mode=%s opposite_keys=%s snap_facing=%d snap_scope=%s log_level=%s log_file=%d",
         cfg->enabled, mode_name(cfg->mode), cfg->socd == KBM_SOCD_LAST ? "last" : "neutral", cfg->snap_facing,
         cfg->snap_scope == KBM_SCOPE_UPDATE ? "update" : "all", kbm_log_level_name(cfg->log_level), cfg->log_file);
+    KBM_LOG(KBM_LOG_INFO, "config: turn_mode=%s response=%.2f min_step=%.1f deg (%u units) max_step=%.1f deg (%u units) safe_area_hook=%d",
+        cfg->snap_facing ? turn_mode_name(cfg->turn_mode) : "game (SnapFacing = 0)", cfg->turn_response, cfg->turn_min_deg,
+        (unsigned)cfg->turn.min_step, cfg->turn_max_deg, (unsigned)cfg->turn.max_step, cfg->safe_area_hook);
     KBM_LOG(KBM_LOG_INFO,
         "config: require_gates=%d strict_version=%d stats_interval=%us hook_wait=%us keys_from_port=%d snap_allow=%d snap_deny=%d",
         cfg->require_gates, cfg->strict_version, (unsigned)cfg->stats_interval_s, (unsigned)cfg->hook_wait_s, cfg->keys_from_port,
