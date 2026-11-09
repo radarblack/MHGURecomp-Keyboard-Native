@@ -24,6 +24,7 @@ typedef struct KbmStats {
     uint64_t face_no_change;
     uint64_t snaps;
     uint64_t snap_reversals;
+    uint64_t turn_partial;
 } KbmStats;
 
 void kbm_driver_reset(void);
