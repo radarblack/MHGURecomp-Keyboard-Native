@@ -4,7 +4,7 @@
 
 #include "host.h"
 
-typedef enum KbmHookId { KBM_H_INPUT = 0, KBM_H_FACE, KBM_H_COUNT } KbmHookId;
+typedef enum KbmHookId { KBM_H_INPUT = 0, KBM_H_INPUT_ALT, KBM_H_FACE, KBM_H_COUNT } KbmHookId;
 
 typedef struct KbmHook {
     const char *name;
@@ -12,6 +12,7 @@ typedef struct KbmHook {
     KbmHostFn fn;
     uint32_t detour;
     uint32_t prev;
+    bool enabled;
     bool installed;
     bool passthrough;
     bool alive_logged;
