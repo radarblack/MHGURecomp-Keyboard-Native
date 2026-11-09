@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "config.h"
+#include "turn.h"
 
 typedef struct KbmKeys {
     bool up, down, left, right, walk;
