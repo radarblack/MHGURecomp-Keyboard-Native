@@ -68,7 +68,7 @@ MOCK_EXPORT uint32_t fnhook_get(uint32_t addr) {
 
 MOCK_EXPORT void fnhook_call_original(KbmCpu *c, uint32_t addr) {
     uint32_t pl = c->r[0];
-    if (addr == KBM_FN_PL_INPUT_UPDATE) {
+    if (addr == KBM_FN_PL_INPUT_UPDATE || addr == KBM_FN_PL_INPUT_UPDATE_ALT) {
         kbm_st16(pl + KBM_PL_STICK_ANGLE, (uint16_t)g_port_angle);
         kbm_st16(pl + KBM_PL_STICK_MAG, (uint16_t)g_port_mag);
     } else if (addr == KBM_FN_FACE_STICK) {
@@ -180,6 +180,7 @@ static void write_ini(const char *text) {
     }
     FILE *f = fopen(path, "wb");
     fputs(text, f);
+    if (!strstr(text, "TurnMode")) fputs("\n[Movement]\nTurnMode = snap\n", f);
     fclose(f);
 }
 
@@ -219,6 +220,11 @@ static void frame(void) {
     call_hooked(KBM_FN_FACE_STICK);
 }
 
+static void frame_alt(void) {
+    call_hooked(KBM_FN_PL_INPUT_UPDATE_ALT);
+    call_hooked(KBM_FN_FACE_STICK);
+}
+
 static uint32_t yaw_actual(void) { return kbm_ld32(PLAYER + KBM_PL_YAW_ACTUAL); }
 static uint32_t yaw_target(void) { return kbm_ld32(PLAYER + KBM_PL_YAW_TARGET); }
 static int stick_angle(void) { return kbm_ld16(PLAYER + KBM_PL_STICK_ANGLE); }
@@ -244,6 +250,7 @@ static void test_clean_flow(void) {
     CHECK(g_mod.name != NULL);
     CHECK(fnhook_get(KBM_FN_PL_INPUT_UPDATE) != 0);
     CHECK(fnhook_get(KBM_FN_FACE_STICK) != 0);
+    CHECK(fnhook_get(KBM_FN_PL_INPUT_UPDATE_ALT) != 0);
 
     g_port_angle = 0;
     g_port_mag = 0;
@@ -277,13 +284,15 @@ static void test_clean_flow(void) {
 
     g_mod.shutdown();
     CHECK_EQ(fnhook_get(KBM_FN_PL_INPUT_UPDATE), 0);
+    CHECK_EQ(fnhook_get(KBM_FN_PL_INPUT_UPDATE_ALT), 0);
     CHECK_EQ(fnhook_get(KBM_FN_FACE_STICK), 0);
     char *log = read_log();
     CHECK(strstr(log, "hook keyboard_movement:player_input: installed"));
+    CHECK(strstr(log, "hook keyboard_movement:player_input_alt: installed"));
     CHECK(strstr(log, "readback verified"));
     CHECK(strstr(log, "first call arrived"));
     CHECK(strstr(log, "direction reversal"));
-    CHECK(strstr(log, "snap yaw"));
+    CHECK(strstr(log, "turn yaw"));
     CHECK(strstr(log, "removed from"));
     CHECK(strstr(log, "all hooks released"));
     CHECK(strstr(log, "shutdown complete"));
@@ -396,6 +405,100 @@ static void test_snap_scope_and_deny(void) {
 
     reset_world();
     write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[Movement]\nSnapFacing = 0\n");
+    CHECK(load_module());
+    g_keys[K_W] = true;
+    g_port_angle = 0x4000;
+    g_port_mag = 150;
+    frame();
+    CHECK(yaw_actual() != yaw_target());
+    CHECK_EQ(stick_angle(), 0x4000);
+    g_mod.shutdown();
+}
+
+static void test_smooth_turn(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[Movement]\nTurnMode = smooth\nTurnResponse = 0.5\n"
+              "TurnMinStepDegrees = 10\nTurnMaxStepDegrees = 50\n");
+    CHECK(load_module());
+    g_keys[K_W] = true;
+    g_port_angle = 0x4000;
+    g_port_mag = 150;
+    uint32_t target = (g_camera_yaw + 0x4000u + 0xc000u) & 0xffffu;
+    kbm_st32(PLAYER + KBM_PL_YAW_ACTUAL, (target + 0x8000u) & 0xffffu);
+    frame();
+    CHECK_EQ(yaw_target(), target);
+    CHECK(yaw_actual() != target);
+    uint16_t prev = 0xffff;
+    int frames = 1;
+    while (yaw_actual() != target && frames < 20) {
+        uint16_t now = (uint16_t)(((int32_t)(int16_t)(uint16_t)(target - yaw_actual())) < 0 ? -(int16_t)(uint16_t)(target - yaw_actual())
+                                                                                                : (int16_t)(uint16_t)(target - yaw_actual()));
+        CHECK(now < prev);
+        prev = now;
+        frame();
+        frames++;
+    }
+    CHECK_EQ(yaw_actual(), target);
+    CHECK(frames >= 4);
+    CHECK(frames <= 8);
+
+    g_keys[K_S] = true;
+    g_port_angle = 0;
+    g_port_mag = 0;
+    uint32_t back = (g_camera_yaw + 0xc000u + 0xc000u) & 0xffffu;
+    frame();
+    CHECK_EQ(yaw_target(), back);
+    CHECK(yaw_actual() != back);
+    for (int i = 0; i < 10; i++) frame();
+    CHECK_EQ(yaw_actual(), back);
+
+    g_keys[K_W] = false;
+    g_keys[K_S] = false;
+    kbm_st32(PLAYER + KBM_PL_YAW_ACTUAL, 0x2222);
+    frame();
+    CHECK_EQ(yaw_actual(), 0x2222);
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "partial"));
+    CHECK(strstr(log, "reached"));
+    CHECK(strstr(log, "turn_mode=smooth"));
+}
+
+static void test_safe_area_hook(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n");
+    CHECK(load_module());
+    kbm_st16(PLAYER + KBM_PL_STICK_ANGLE, 0);
+    g_keys[K_D] = true;
+    g_port_angle = 0;
+    g_port_mag = 150;
+    frame_alt();
+    CHECK_EQ(stick_angle(), 0x0000);
+    g_keys[K_D] = false;
+    g_keys[K_W] = true;
+    g_port_angle = 0x1111;
+    g_port_mag = 0;
+    frame_alt();
+    CHECK_EQ(stick_angle(), 0x4000);
+    CHECK(stick_mag() >= KBM_TILT_WALK_MIN);
+    CHECK_EQ(yaw_actual(), yaw_target());
+    g_mod.shutdown();
+    CHECK_EQ(fnhook_get(KBM_FN_PL_INPUT_UPDATE_ALT), 0);
+
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[Movement]\nSafeAreaHook = 0\n");
+    CHECK(load_module());
+    CHECK(fnhook_get(KBM_FN_PL_INPUT_UPDATE) != 0);
+    CHECK_EQ(fnhook_get(KBM_FN_PL_INPUT_UPDATE_ALT), 0);
+    char *log = read_log();
+    CHECK(strstr(log, "turned off by the config"));
+    CHECK(strstr(log, "ready: 2 hook(s) installed"));
+    g_mod.shutdown();
+}
+
+static void test_game_turn_mode(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[Movement]\nTurnMode = game\n");
     CHECK(load_module());
     g_keys[K_W] = true;
     g_port_angle = 0x4000;
@@ -519,7 +622,7 @@ static void test_delayed_load(void) {
     char *log = read_log();
     CHECK(strstr(log, "waiting for the game to load"));
     CHECK(strstr(log, "the game is loaded"));
-    CHECK(strstr(log, "ready: 2 hook(s) installed"));
+    CHECK(strstr(log, "ready: 3 hook(s) installed"));
 }
 
 static void test_shutdown_while_waiting(void) {
@@ -621,6 +724,9 @@ int main(void) {
     test_gates();
     test_snap_scope_and_deny();
     test_passthrough_mode();
+    test_smooth_turn();
+    test_safe_area_hook();
+    test_game_turn_mode();
     test_chaining();
     test_superseded();
     test_declines();
