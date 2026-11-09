@@ -21,6 +21,7 @@ static inline void kbm_st16(uint32_t a, uint16_t v) { memcpy(KBM_GPTR(a), &v, si
 static inline void kbm_st32(uint32_t a, uint32_t v) { memcpy(KBM_GPTR(a), &v, sizeof v); }
 
 #define KBM_FN_PL_INPUT_UPDATE 0x4a79ccu
+#define KBM_FN_PL_INPUT_UPDATE_ALT 0x48d1f0u
 #define KBM_FN_FACE_STICK 0x47f678u
 #define KBM_FN_PL_IS_LOCAL 0x47bcd0u
 #define KBM_FN_PL_STICK_REVERSED 0x4f5478u
@@ -50,6 +51,7 @@ typedef struct KbmGuestSig {
 
 static const KbmGuestSig kbm_guest_sigs[] = {
     {KBM_FN_PL_INPUT_UPDATE, "player input update", {0xe92d4ff0u, 0xe24dd014u, 0xe1a04000u}},
+    {KBM_FN_PL_INPUT_UPDATE_ALT, "player input update (safe areas)", {0xe92d4bf0u, 0xe1a04000u, 0xe59f037cu}},
     {KBM_FN_FACE_STICK, "face stick", {0xe92d4010u, 0xe1a04000u, 0xe5940000u}},
     {KBM_FN_PL_IS_LOCAL, "player is local", {0xe30113ccu, 0xe7900001u, 0xe2000001u}},
     {KBM_FN_PL_STICK_REVERSED, "stick reversed", {0xe30218b8u, 0xe7901001u, 0xe3a00000u}},
