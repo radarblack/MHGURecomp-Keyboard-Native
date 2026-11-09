@@ -66,7 +66,7 @@ static int g_port_angle, g_port_mag;
 
 EXPORT void fnhook_call_original(Cpu *c, uint32_t addr) {
     uint32_t pl = c->r[0];
-    if (addr == KBM_FN_PL_INPUT_UPDATE) {
+    if (addr == KBM_FN_PL_INPUT_UPDATE || addr == KBM_FN_PL_INPUT_UPDATE_ALT) {
         kbm_st16(pl + KBM_PL_STICK_ANGLE, (uint16_t)g_port_angle);
         kbm_st16(pl + KBM_PL_STICK_MAG, (uint16_t)g_port_mag);
     } else if (addr == KBM_FN_FACE_STICK) {
@@ -129,6 +129,11 @@ int main(void) {
     void (*set_key)(int, int) = (void (*)(int, int))GetProcAddress(sdl, "mock_set_key");
 
     CreateDirectoryA("modrun", NULL);
+    {
+        FILE *ini = fopen("modrun/keyboard_movement.ini", "wb");
+        fputs("[Movement]\nTurnMode = snap\n", ini);
+        fclose(ini);
+    }
     HMODULE mod = LoadLibraryA("engine_modules/keyboard_movement/keyboard_movement.dll");
     CHECKW(mod != NULL);
     if (!mod) return 1;
@@ -157,6 +162,7 @@ int main(void) {
     for (int i = 0; i < 100 && !fnhook_get(KBM_FN_PL_INPUT_UPDATE); i++) Sleep(50);
     CHECKW(fnhook_get(KBM_FN_PL_INPUT_UPDATE) != 0);
     CHECKW(fnhook_get(KBM_FN_FACE_STICK) != 0);
+    CHECKW(fnhook_get(KBM_FN_PL_INPUT_UPDATE_ALT) != 0);
 
     set_key(26, 1);
     g_port_angle = 0;
@@ -171,6 +177,7 @@ int main(void) {
 
     out.shutdown();
     CHECKW(fnhook_get(KBM_FN_PL_INPUT_UPDATE) == 0);
+    CHECKW(fnhook_get(KBM_FN_PL_INPUT_UPDATE_ALT) == 0);
     CHECKW(fnhook_get(KBM_FN_FACE_STICK) == 0);
     printf(g_fail ? "WINDOWS RUN: %d FAILURES\n" : "WINDOWS RUN: all checks passed\n", g_fail);
     return g_fail ? 1 : 0;
