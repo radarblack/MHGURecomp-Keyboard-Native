@@ -32,8 +32,9 @@ static void detour_input(KbmCpu *c) {
     KbmHook *h = &g_hooks[KBM_H_INPUT];
     uint32_t player = c->r[0];
     note_call(h, player);
+    if (!h->passthrough) kbm_driver_before_input(c, player, false);
     call_next(c, h);
-    if (!h->passthrough) kbm_driver_on_input(player);
+    if (!h->passthrough) kbm_driver_on_input(c, player, false);
 }
 
 static void detour_input_alt(KbmCpu *c) {
@@ -41,7 +42,7 @@ static void detour_input_alt(KbmCpu *c) {
     uint32_t player = c->r[0];
     note_call(h, player);
     call_next(c, h);
-    if (!h->passthrough) kbm_driver_on_input(player);
+    if (!h->passthrough) kbm_driver_on_input(c, player, true);
 }
 
 static void detour_face(KbmCpu *c) {
