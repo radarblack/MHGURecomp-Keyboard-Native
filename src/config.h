@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "log.h"
+#include "ikcore.h"
 #include "turn.h"
 
 #define KBM_MAX_ACTS 32
@@ -36,6 +37,15 @@ typedef struct KbmConfig {
     double turn_max_deg;
     KbmTurn turn;
     bool safe_area_hook;
+    bool item_hotkeys;
+    uint32_t ik_double_ms;
+    uint32_t ik_use_mask;
+    uint32_t ik_use_hold;
+    uint32_t ik_use_delay;
+    uint32_t ik_sampler_ms;
+    bool probe_input;
+    char ik_key_text[KBM_IK_KEYS][KBM_KEY_TEXT];
+    int ik_slot[KBM_IK_KEYS];
     KbmSnapScope snap_scope;
     KbmActId snap_allow[KBM_MAX_ACTS];
     int n_allow;
