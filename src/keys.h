@@ -20,6 +20,11 @@ typedef struct KbmBind {
     int n;
 } KbmBind;
 
+bool kbm_bind_parse(KbmBind *b, const char *label, const char *text);
+bool kbm_bind_down(const KbmBind *b, const bool *ks, int nkeys, uint32_t mouse);
+bool kbm_bind_uses_mouse(const KbmBind *b);
+bool kbm_bind_has_scancode(const KbmBind *b, int scancode);
+
 typedef bool (*KbmSettingFn)(const char *key, char *out, size_t out_size);
 
 int kbm_split_keys(const char *list, char out[][KBM_TOKEN_MAX], int max);
