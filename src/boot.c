@@ -4,6 +4,7 @@
 #include "driver.h"
 #include "guest.h"
 #include "hooks.h"
+#include "itemkeys.h"
 #include "host.h"
 #include "log.h"
 #include "platform.h"
@@ -99,6 +100,7 @@ static void worker(void *unused) {
         KBM_LOG(KBM_LOG_WARN, "hook install attempt %d of %d failed, trying again shortly", attempt, KBM_INSTALL_TRIES);
         kbm_sleep_ms(500);
     }
+    kbm_itemkeys_start();
     set_state(KBM_BOOT_ACTIVE);
     KBM_LOG(KBM_LOG_INFO, "ready: %d hook(s) installed, mode=%s, %llu ms after the module started", kbm_hooks_installed_count(),
         g_cfg.mode == KBM_MODE_DIRECT ? "direct" : "passthrough", (unsigned long long)(kbm_now_ms() - t0));
