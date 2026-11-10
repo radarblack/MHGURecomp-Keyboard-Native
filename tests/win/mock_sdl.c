@@ -16,7 +16,7 @@ EXPORT int SDL_GetScancodeFromName(const char *name) {
     static const struct {
         const char *n;
         int c;
-    } t[] = {{"W", 26}, {"S", 22}, {"A", 4}, {"D", 7}, {"Left Shift", 225}};
+    } t[] = {{"W", 26}, {"S", 22}, {"A", 4}, {"D", 7}, {"Left Shift", 225}, {"1", 30}, {"2", 31}, {"3", 32}, {"4", 33}, {"5", 34}, {"6", 35}, {"7", 36}, {"8", 37}, {"9", 38}, {"0", 39}, {"-", 45}, {"=", 46}};
     for (unsigned i = 0; i < sizeof t / sizeof t[0]; i++)
         if (!_stricmp(name, t[i].n)) return t[i].c;
     return 0;
