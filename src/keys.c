@@ -55,8 +55,7 @@ bool kbm_parse_mouse_name(const char *name, int *button) {
     return false;
 }
 
-static void parse_bind(KbmBindId id, const char *text, const char *source) {
-    KbmBind *b = &g_binds[id];
+bool kbm_bind_parse(KbmBind *b, const char *label, const char *text) {
     b->n = 0;
     char toks[KBM_BIND_KEYS + 2][KBM_TOKEN_MAX];
     int n = kbm_split_keys(text, toks, KBM_BIND_KEYS + 2);
@@ -65,7 +64,7 @@ static void parse_bind(KbmBindId id, const char *text, const char *source) {
         int mb = 0;
         if (kbm_parse_mouse_name(toks[i], &mb)) {
             if (!g_host.sdl_mouse_state) {
-                KBM_LOG(KBM_LOG_WARN, "bind %s: '%s' needs SDL_GetMouseState which is missing, skipped", k_labels[id], toks[i]);
+                KBM_LOG(KBM_LOG_WARN, "bind %s: '%s' needs SDL_GetMouseState which is missing, skipped", label, toks[i]);
                 continue;
             }
             if (b->n < KBM_BIND_KEYS) b->refs[b->n++] = (KbmKeyRef){KIND_MOUSE, mb};
@@ -73,12 +72,29 @@ static void parse_bind(KbmBindId id, const char *text, const char *source) {
         }
         int sc = g_host.sdl_scancode_from_name(toks[i]);
         if (sc <= 0) {
-            KBM_LOG(KBM_LOG_WARN, "bind %s: key '%s' is not an SDL key name, skipped", k_labels[id], toks[i]);
+            KBM_LOG(KBM_LOG_WARN, "bind %s: key '%s' is not an SDL key name, skipped", label, toks[i]);
             continue;
         }
         if (b->n < KBM_BIND_KEYS) b->refs[b->n++] = (KbmKeyRef){KIND_KEY, sc};
     }
-    KBM_LOG(KBM_LOG_INFO, "bind %-5s = \"%s\" (%s): %d key(s)", k_labels[id], text, source, b->n);
+    return b->n > 0;
+}
+
+bool kbm_bind_uses_mouse(const KbmBind *b) {
+    for (int i = 0; i < b->n; i++)
+        if (b->refs[i].kind == KIND_MOUSE) return true;
+    return false;
+}
+
+bool kbm_bind_has_scancode(const KbmBind *b, int scancode) {
+    for (int i = 0; i < b->n; i++)
+        if (b->refs[i].kind == KIND_KEY && b->refs[i].code == scancode) return true;
+    return false;
+}
+
+static void parse_bind(KbmBindId id, const char *text, const char *source) {
+    kbm_bind_parse(&g_binds[id], k_labels[id], text);
+    KBM_LOG(KBM_LOG_INFO, "bind %-5s = \"%s\" (%s): %d key(s)", k_labels[id], text, source, g_binds[id].n);
 }
 
 bool kbm_keys_init(const KbmConfig *cfg, KbmSettingFn setting) {
@@ -108,7 +124,7 @@ bool kbm_keys_init(const KbmConfig *cfg, KbmSettingFn setting) {
     return usable;
 }
 
-static bool bind_down(const KbmBind *b, const bool *ks, int nkeys, uint32_t mouse) {
+bool kbm_bind_down(const KbmBind *b, const bool *ks, int nkeys, uint32_t mouse) {
     for (int i = 0; i < b->n; i++) {
         const KbmKeyRef *r = &b->refs[i];
         if (r->kind == KIND_KEY && r->code < nkeys && ks[r->code]) return true;
@@ -127,9 +143,9 @@ void kbm_keys_sample(KbmKeys *out) {
     if (mouse_needed && g_host.sdl_mouse_state) mouse = g_host.sdl_mouse_state(NULL, NULL);
     memset(out, 0, sizeof *out);
     if (!ks) return;
-    out->up = bind_down(&g_binds[KBM_B_UP], ks, n, mouse);
-    out->down = bind_down(&g_binds[KBM_B_DOWN], ks, n, mouse);
-    out->left = bind_down(&g_binds[KBM_B_LEFT], ks, n, mouse);
-    out->right = bind_down(&g_binds[KBM_B_RIGHT], ks, n, mouse);
-    out->walk = bind_down(&g_binds[KBM_B_WALK], ks, n, mouse);
+    out->up = kbm_bind_down(&g_binds[KBM_B_UP], ks, n, mouse);
+    out->down = kbm_bind_down(&g_binds[KBM_B_DOWN], ks, n, mouse);
+    out->left = kbm_bind_down(&g_binds[KBM_B_LEFT], ks, n, mouse);
+    out->right = kbm_bind_down(&g_binds[KBM_B_RIGHT], ks, n, mouse);
+    out->walk = kbm_bind_down(&g_binds[KBM_B_WALK], ks, n, mouse);
 }
