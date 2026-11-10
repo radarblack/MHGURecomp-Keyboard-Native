@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "host.h"
 #include "log.h"
 
 typedef struct KbmStats {
@@ -28,7 +29,8 @@ typedef struct KbmStats {
 } KbmStats;
 
 void kbm_driver_reset(void);
-void kbm_driver_on_input(uint32_t player);
+void kbm_driver_before_input(KbmCpu *c, uint32_t player, bool alt);
+void kbm_driver_on_input(KbmCpu *c, uint32_t player, bool alt);
 void kbm_driver_on_face(uint32_t player);
 void kbm_driver_log_stats(KbmLogLevel level, const char *why);
 const KbmStats *kbm_driver_stats(void);
