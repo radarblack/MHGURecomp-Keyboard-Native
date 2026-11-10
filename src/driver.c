@@ -6,6 +6,7 @@
 #include "config.h"
 #include "guest.h"
 #include "host.h"
+#include "itemkeys.h"
 #include "keys.h"
 #include "movement.h"
 #include "platform.h"
@@ -66,6 +67,7 @@ static const char *gate_reason(void) {
 
 void kbm_driver_log_stats(KbmLogLevel level, const char *why) {
     const KbmStats *s = &g_stats;
+    kbm_itemkeys_log_stats(level, why);
     KBM_LOG(level, "stats (%s): input calls=%llu not_local=%llu suspended=%llu idle=%llu driven=%llu injected=%llu reversals=%llu",
         why, (unsigned long long)s->input_calls, (unsigned long long)s->input_not_local, (unsigned long long)s->input_suspended,
         (unsigned long long)s->input_idle, (unsigned long long)s->input_driven, (unsigned long long)s->injected,
@@ -123,7 +125,11 @@ static int choose_magnitude(const KbmMove *m, int game_mag, const char **source)
     return def;
 }
 
-void kbm_driver_on_input(uint32_t pl) {
+void kbm_driver_before_input(KbmCpu *c, uint32_t pl, bool alt) {
+    if (!alt) kbm_itemkeys_before_input(c, pl);
+}
+
+void kbm_driver_on_input(KbmCpu *c, uint32_t pl, bool alt) {
     g_stats.input_calls++;
     if (!is_local(pl)) {
         g_stats.input_not_local++;
@@ -133,6 +139,7 @@ void kbm_driver_on_input(uint32_t pl) {
 
     const char *gate = gate_reason();
     note_gate(gate);
+    if (!alt) kbm_itemkeys_after_input(c, pl, gate);
     if (gate) {
         g_stats.input_suspended++;
         g_driving = false;
