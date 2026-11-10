@@ -27,6 +27,18 @@ void kbm_config_defaults(KbmConfig *cfg, KbmLogLevel default_level) {
     cfg->turn_min_deg = 12.0;
     cfg->turn_max_deg = 60.0;
     cfg->safe_area_hook = true;
+    cfg->item_hotkeys = true;
+    cfg->ik_double_ms = 350;
+    cfg->ik_use_mask = 0;
+    cfg->ik_use_hold = 3;
+    cfg->ik_use_delay = 0;
+    cfg->ik_sampler_ms = 4;
+    cfg->probe_input = false;
+    static const char *const k_default_keys[KBM_IK_KEYS] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="};
+    for (int i = 0; i < KBM_IK_KEYS; i++) {
+        snprintf(cfg->ik_key_text[i], KBM_KEY_TEXT, "%s", k_default_keys[i]);
+        cfg->ik_slot[i] = i;
+    }
     kbm_config_finalize(cfg);
     cfg->snap_scope = KBM_SCOPE_UPDATE;
     cfg->keys_from_port = true;
@@ -147,6 +159,37 @@ static void apply(KbmConfig *cfg, const char *key, const char *val, int line) {
     } else if (!strcasecmp(key, "SafeAreaHook")) {
         if (kbm_parse_bool(val, &b)) cfg->safe_area_hook = b;
         else goto bad;
+    } else if (!strcasecmp(key, "ItemHotkeys")) {
+        if (kbm_parse_bool(val, &b)) cfg->item_hotkeys = b;
+        else goto bad;
+    } else if (!strcasecmp(key, "DoublePressMs")) {
+        char *end;
+        long v = strtol(val, &end, 10);
+        if (end != val && v >= 0 && v <= 2000) cfg->ik_double_ms = (uint32_t)v;
+        else goto bad;
+    } else if (!strcasecmp(key, "UsePadMask")) {
+        char *end;
+        unsigned long v = strtoul(val, &end, 0);
+        if (end != val && v <= 0xffffffffUL) cfg->ik_use_mask = (uint32_t)v;
+        else goto bad;
+    } else if (!strcasecmp(key, "UseHoldUpdates")) {
+        char *end;
+        long v = strtol(val, &end, 10);
+        if (end != val && v >= 1 && v <= 30) cfg->ik_use_hold = (uint32_t)v;
+        else goto bad;
+    } else if (!strcasecmp(key, "UseDelayUpdates")) {
+        char *end;
+        long v = strtol(val, &end, 10);
+        if (end != val && v >= 0 && v <= 30) cfg->ik_use_delay = (uint32_t)v;
+        else goto bad;
+    } else if (!strcasecmp(key, "SamplerMs")) {
+        char *end;
+        long v = strtol(val, &end, 10);
+        if (end != val && v >= 0 && v <= 50) cfg->ik_sampler_ms = (uint32_t)v;
+        else goto bad;
+    } else if (!strcasecmp(key, "ProbeInput")) {
+        if (kbm_parse_bool(val, &b)) cfg->probe_input = b;
+        else goto bad;
     } else if (!strcasecmp(key, "SnapScope")) {
         if (!strcasecmp(val, "update")) cfg->snap_scope = KBM_SCOPE_UPDATE;
         else if (!strcasecmp(val, "all")) cfg->snap_scope = KBM_SCOPE_ALL;
@@ -168,6 +211,17 @@ static void apply(KbmConfig *cfg, const char *key, const char *val, int line) {
                 snprintf(cfg->key_text[i], KBM_KEY_TEXT, "%s", val);
                 return;
             }
+        }
+        int n = 0;
+        if (sscanf(key, "ItemKey%d", &n) == 1 && n >= 1 && n <= KBM_IK_KEYS) {
+            snprintf(cfg->ik_key_text[n - 1], KBM_KEY_TEXT, "%s", val);
+            return;
+        }
+        if (sscanf(key, "ItemSlot%d", &n) == 1 && n >= 1 && n <= KBM_IK_KEYS) {
+            int slot = 0;
+            if (kbm_ik_parse_slot(val, &slot)) cfg->ik_slot[n - 1] = slot;
+            else goto bad;
+            return;
         }
         KBM_LOG(KBM_LOG_WARN, "config line %d: unknown key '%s' ignored", line, key);
     }
@@ -221,6 +275,9 @@ void kbm_config_log(const KbmConfig *cfg) {
     KBM_LOG(KBM_LOG_INFO, "config: turn_mode=%s response=%.2f min_step=%.1f deg (%u units) max_step=%.1f deg (%u units) safe_area_hook=%d",
         cfg->snap_facing ? turn_mode_name(cfg->turn_mode) : "game (SnapFacing = 0)", cfg->turn_response, cfg->turn_min_deg,
         (unsigned)cfg->turn.min_step, cfg->turn_max_deg, (unsigned)cfg->turn.max_step, cfg->safe_area_hook);
+    KBM_LOG(KBM_LOG_INFO, "config: item_hotkeys=%d double_press=%ums use_mask=0x%x hold=%u delay=%u sampler=%ums probe_input=%d",
+        cfg->item_hotkeys, (unsigned)cfg->ik_double_ms, (unsigned)cfg->ik_use_mask, (unsigned)cfg->ik_use_hold,
+        (unsigned)cfg->ik_use_delay, (unsigned)cfg->ik_sampler_ms, cfg->probe_input);
     KBM_LOG(KBM_LOG_INFO,
         "config: require_gates=%d strict_version=%d stats_interval=%us hook_wait=%us keys_from_port=%d snap_allow=%d snap_deny=%d",
         cfg->require_gates, cfg->strict_version, (unsigned)cfg->stats_interval_s, (unsigned)cfg->hook_wait_s, cfg->keys_from_port,
