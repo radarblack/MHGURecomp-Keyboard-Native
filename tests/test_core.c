@@ -4,6 +4,7 @@
 
 #include "check.h"
 #include "config.h"
+#include "ikcore.h"
 #include "keys.h"
 #include "log.h"
 #include "movement.h"
@@ -243,6 +244,82 @@ static void test_turn_config(void) {
     remove(path);
 }
 
+static void test_ikcore(void) {
+    KbmIkState st;
+    kbm_ik_state_init(&st);
+    CHECK(kbm_ik_press(&st, 3, 1000, 350) == KBM_IK_SELECT);
+    CHECK(kbm_ik_press(&st, 3, 1200, 350) == KBM_IK_USE);
+    CHECK(kbm_ik_press(&st, 3, 1300, 350) == KBM_IK_SELECT);
+    CHECK(kbm_ik_press(&st, 3, 1600, 350) == KBM_IK_USE);
+    CHECK(kbm_ik_press(&st, 3, 3000, 350) == KBM_IK_SELECT);
+    CHECK(kbm_ik_press(&st, 4, 3100, 350) == KBM_IK_SELECT);
+    CHECK(kbm_ik_press(&st, 3, 3200, 350) == KBM_IK_SELECT);
+    CHECK(kbm_ik_press(&st, 3, 3700, 350) == KBM_IK_SELECT);
+    CHECK(kbm_ik_press(&st, 3, 3750, 350) == KBM_IK_USE);
+    kbm_ik_state_init(&st);
+    CHECK(kbm_ik_press(&st, 1, 10, 0) == KBM_IK_SELECT);
+    CHECK(kbm_ik_press(&st, 1, 20, 0) == KBM_IK_SELECT);
+    kbm_ik_state_init(&st);
+    CHECK(kbm_ik_press(&st, 5, 0xfffffff0u, 350) == KBM_IK_SELECT);
+    CHECK(kbm_ik_press(&st, 5, 0x00000040u, 350) == KBM_IK_USE);
+
+    KbmIkRing r;
+    kbm_ik_ring_init(&r);
+    KbmIkEvent e;
+    CHECK(!kbm_ik_ring_pop(&r, &e));
+    for (int i = 0; i < KBM_IK_RING - 1; i++) CHECK(kbm_ik_ring_push(&r, i % 12, (uint32_t)i));
+    CHECK(!kbm_ik_ring_push(&r, 1, 999));
+    for (int i = 0; i < KBM_IK_RING - 1; i++) {
+        CHECK(kbm_ik_ring_pop(&r, &e));
+        CHECK_EQ(e.key, i % 12);
+        CHECK_EQ(e.t_ms, (uint32_t)i);
+    }
+    CHECK(!kbm_ik_ring_pop(&r, &e));
+    CHECK(kbm_ik_ring_push(&r, 7, 5));
+    CHECK(kbm_ik_ring_pop(&r, &e) && e.key == 7 && e.t_ms == 5);
+
+    int slot = -1;
+    CHECK(kbm_ik_parse_slot("1", &slot) && slot == 0);
+    CHECK(kbm_ik_parse_slot(" 24 ", &slot) && slot == 23);
+    CHECK(!kbm_ik_parse_slot("0", &slot));
+    CHECK(!kbm_ik_parse_slot("25", &slot));
+    CHECK(!kbm_ik_parse_slot("x", &slot));
+    CHECK(!kbm_ik_parse_slot("3x", &slot));
+}
+
+static void test_item_config(void) {
+    char path[] = "/tmp/kbm_cfg_XXXXXX";
+    int fd = mkstemp(path);
+    FILE *f = fdopen(fd, "wb");
+    fputs("[ItemHotkeys]\nItemHotkeys = 0\nDoublePressMs = 500\nUsePadMask = 0x800\nUseHoldUpdates = 4\nUseDelayUpdates = 1\n"
+          "SamplerMs = 8\nProbeInput = 1\nItemKey1 = F1\nItemKey12 = =\nItemSlot1 = 5\nItemSlot12 = 24\nItemSlot3 = 99\nItemKey13 = x\n",
+        f);
+    fclose(f);
+    KbmConfig c;
+    kbm_config_defaults(&c, KBM_LOG_INFO);
+    CHECK(c.item_hotkeys);
+    CHECK_EQ(c.ik_double_ms, 350);
+    CHECK_EQ(c.ik_use_mask, 0);
+    CHECK(!strcmp(c.ik_key_text[0], "1"));
+    CHECK(!strcmp(c.ik_key_text[10], "-"));
+    CHECK(!strcmp(c.ik_key_text[11], "="));
+    CHECK_EQ(c.ik_slot[11], 11);
+    CHECK(kbm_config_load(&c, path));
+    CHECK(!c.item_hotkeys);
+    CHECK_EQ(c.ik_double_ms, 500);
+    CHECK_EQ(c.ik_use_mask, 0x800);
+    CHECK_EQ(c.ik_use_hold, 4);
+    CHECK_EQ(c.ik_use_delay, 1);
+    CHECK_EQ(c.ik_sampler_ms, 8);
+    CHECK(c.probe_input);
+    CHECK(!strcmp(c.ik_key_text[0], "F1"));
+    CHECK(!strcmp(c.ik_key_text[11], "="));
+    CHECK_EQ(c.ik_slot[0], 4);
+    CHECK_EQ(c.ik_slot[11], 23);
+    CHECK_EQ(c.ik_slot[2], 2);
+    remove(path);
+}
+
 int main(void) {
     test_angles();
     test_tilt();
@@ -254,5 +331,7 @@ int main(void) {
     test_config_file();
     test_turn_step();
     test_turn_config();
+    test_ikcore();
+    test_item_config();
     CHECK_REPORT("test_core");
 }
