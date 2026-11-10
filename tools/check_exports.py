@@ -7,8 +7,8 @@ try:
 except ImportError:
     sys.exit("this tool needs pefile: pip install pefile")
 
-PORT_REQUIRED = ["fnhook_set", "fnhook_get", "fnhook_call_original", "hle_register", "textinput_active", "chat_active"]
-PORT_OPTIONAL = ["guest_call", "overlay_menu_open"]
+PORT_REQUIRED = ["fnhook_set", "fnhook_get", "fnhook_call_original", "hle_register", "guest_call", "textinput_active", "chat_active"]
+PORT_OPTIONAL = ["dispatch_lookup", "overlay_menu_open"]
 SDL_REQUIRED = ["SDL_GetKeyboardState", "SDL_GetScancodeFromName"]
 SDL_OPTIONAL = ["SDL_GetMouseState", "SDL_GetKeyboardFocus", "SDL_TextInputActive"]
 
