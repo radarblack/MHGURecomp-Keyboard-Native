@@ -11,11 +11,18 @@
 #include "engine_module_api.h"
 #include "guest.h"
 #include "host.h"
+#include "itemkeys.h"
+#include "platform.h"
 
 #define PLAYER 0x08000000u
 #define HLE_START 0xf0000000u
 #define MAX_HLE 16
 #define MAX_HOOK 16
+#define POUCH_BASE 0x07e00000u
+#define VTABLE 0x07f00000u
+#define FAKE_CAN_SELECT 0x00300000u
+#define GOT_P 0x07d00000u
+#define SPAD 0x07c00000u
 #define MOCK_EXPORT __attribute__((visibility("default")))
 
 MHGU_ENGINE_MODULE_LINK bool mhgu_engine_module_entry(const MhguHost *host, MhguEngineModule *out);
@@ -37,6 +44,8 @@ static int g_port_angle, g_port_mag;
 static uint32_t g_camera_yaw;
 static int g_other_calls;
 static bool g_dispatch_ready;
+static int g_busy;
+static int g_can_select;
 
 MOCK_EXPORT uint32_t hle_register(const char *name, KbmHostFn fn) {
     for (int i = 0; i < g_nhle; i++)
@@ -78,6 +87,22 @@ MOCK_EXPORT void fnhook_call_original(KbmCpu *c, uint32_t addr) {
 }
 
 MOCK_EXPORT void guest_call(KbmCpu *c, uint32_t addr) {
+    if (addr == KBM_FN_PL_BUSY) {
+        c->r[0] = (uint32_t)g_busy;
+        return;
+    }
+    if (addr == KBM_FN_POUCH_ENTRY) {
+        c->r[0] = c->r[1] < 0x32 ? POUCH_BASE + 0x1au + 4u * c->r[1] : 0;
+        return;
+    }
+    if (addr == KBM_FN_ITEM_USABLE) {
+        c->r[0] = c->r[1] == 1 || c->r[1] == 2 || c->r[1] == 3;
+        return;
+    }
+    if (addr == FAKE_CAN_SELECT) {
+        c->r[0] = (uint32_t)g_can_select;
+        return;
+    }
     if (addr >= HLE_START && addr < HLE_START + 16u * MAX_HLE) {
         KbmHostFn fn = g_hle[(addr - HLE_START) / 16].fn;
         if (fn) fn(c);
@@ -114,7 +139,7 @@ MOCK_EXPORT int SDL_GetScancodeFromName(const char *name) {
     static const struct {
         const char *n;
         int c;
-    } t[] = {{"W", 26}, {"S", 22}, {"A", 4}, {"D", 7}, {"Left Shift", 225}, {"Up", 82}};
+    } t[] = {{"W", 26}, {"S", 22}, {"A", 4}, {"D", 7}, {"Left Shift", 225}, {"Up", 82}, {"1", 30}, {"2", 31}, {"3", 32}, {"4", 33}, {"5", 34}, {"6", 35}, {"7", 36}, {"8", 37}, {"9", 38}, {"0", 39}, {"-", 45}, {"=", 46}};
     for (size_t i = 0; i < sizeof t / sizeof t[0]; i++)
         if (!strcasecmp(name, t[i].n)) return t[i].c;
     return 0;
@@ -125,14 +150,14 @@ MOCK_EXPORT uint32_t SDL_GetMouseState(float *x, float *y) {
     return 0;
 }
 
-enum { K_W = 26, K_S = 22, K_A = 4, K_D = 7, K_SHIFT = 225 };
+enum { K_W = 26, K_S = 22, K_A = 4, K_D = 7, K_SHIFT = 225, K_1 = 30, K_2 = 31, K_3 = 32 };
 
 static void host_log(const char *fmt, ...) { (void)fmt; }
 
 static bool host_setting(const char *key, char *out, size_t n) {
     static const struct {
         const char *k, *v;
-    } t[] = {{"MoveUp", "W"}, {"MoveDown", "S"}, {"MoveLeft", "A"}, {"MoveRight", "D"}, {"Walk", "Left Shift"}};
+    } t[] = {{"MoveUp", "W"}, {"MoveDown", "S"}, {"MoveLeft", "A"}, {"MoveRight", "D"}, {"Walk", "Left Shift"}, {"ItemRight", "5"}};
     for (size_t i = 0; i < sizeof t / sizeof t[0]; i++) {
         if (!strcmp(key, t[i].k)) {
             snprintf(out, n, "%s", t[i].v);
@@ -169,6 +194,26 @@ static void reset_world(void) {
     kbm_st32(PLAYER + KBM_PL_YAW_TARGET, 0x1234);
     kbm_st16(PLAYER + KBM_PL_STICK_ANGLE, 0);
     kbm_st16(PLAYER + KBM_PL_STICK_MAG, 0);
+    g_busy = 0;
+    g_can_select = 1;
+    kbm_st32(PLAYER, VTABLE);
+    kbm_st32(VTABLE + KBM_VF_CAN_SELECT, FAKE_CAN_SELECT);
+    kbm_st16(PLAYER + KBM_PL_ITEM_SLOT, KBM_ITEM_NO_ITEM);
+    kbm_st32(PLAYER + KBM_PL_ITEM_FLAGS, 0);
+    for (int slot = 0; slot < 0x32; slot++) {
+        kbm_st16(POUCH_BASE + 0x1au + 4u * (uint32_t)slot, 0);
+        kbm_st16(POUCH_BASE + 0x1cu + 4u * (uint32_t)slot, 0);
+    }
+    const uint16_t items[][2] = {{1, 5}, {2, 3}, {0x100, 4}, {0, 0}, {3, 0}, {1, 9}};
+    for (int slot = 0; slot < 6; slot++) {
+        kbm_st16(POUCH_BASE + 0x1au + 4u * (uint32_t)slot, items[slot][0]);
+        kbm_st16(POUCH_BASE + 0x1cu + 4u * (uint32_t)slot, items[slot][1]);
+    }
+    kbm_st32(KBM_GOT_SPAD, GOT_P);
+    kbm_st32(GOT_P, SPAD);
+    kbm_st32(SPAD + KBM_SPAD_HELD, 0);
+    kbm_st32(SPAD + KBM_SPAD_LAST, 0);
+    kbm_st32(SPAD + KBM_SPAD_NEW, 0);
 }
 
 static void write_ini(const char *text) {
@@ -181,6 +226,7 @@ static void write_ini(const char *text) {
     FILE *f = fopen(path, "wb");
     fputs(text, f);
     if (!strstr(text, "TurnMode")) fputs("\n[Movement]\nTurnMode = snap\n", f);
+    if (!strstr(text, "SamplerMs")) fputs("\n[ItemHotkeys]\nSamplerMs = 0\n", f);
     fclose(f);
 }
 
@@ -509,6 +555,253 @@ static void test_game_turn_mode(void) {
     g_mod.shutdown();
 }
 
+static void press(int key, uint32_t age_ms) { kbm_itemkeys_push(key, (uint32_t)kbm_now_ms() - age_ms); }
+static uint32_t spad_held(void) { return kbm_ld32(SPAD + KBM_SPAD_HELD); }
+static uint32_t spad_new(void) { return kbm_ld32(SPAD + KBM_SPAD_NEW); }
+static int bar_slot(void) { return kbm_ld16(PLAYER + KBM_PL_ITEM_SLOT); }
+
+static void test_item_select(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = debug\nStatsIntervalSeconds = 0\n");
+    CHECK(load_module());
+    CHECK(kbm_itemkeys_enabled());
+
+    press(0, 50);
+    frame();
+    CHECK_EQ(bar_slot(), 0);
+    CHECK((kbm_ld32(PLAYER + KBM_PL_ITEM_FLAGS) & 6u) != 0);
+
+    press(1, 50);
+    frame();
+    CHECK_EQ(bar_slot(), 1);
+
+    press(2, 50);
+    frame();
+    CHECK_EQ(bar_slot(), KBM_ITEM_NO_ITEM);
+
+    press(3, 50);
+    frame();
+    CHECK_EQ(bar_slot(), KBM_ITEM_NO_ITEM);
+
+    press(1, 50);
+    frame();
+    CHECK_EQ(bar_slot(), 1);
+    press(4, 50);
+    frame();
+    CHECK_EQ(bar_slot(), KBM_ITEM_NO_ITEM);
+
+    press(5, 50);
+    frame();
+    CHECK_EQ(bar_slot(), 5);
+
+    press(11, 50);
+    frame();
+    CHECK_EQ(bar_slot(), KBM_ITEM_NO_ITEM);
+
+    g_busy = 1;
+    press(0, 50);
+    frame();
+    CHECK_EQ(bar_slot(), KBM_ITEM_NO_ITEM);
+    g_busy = 0;
+    g_can_select = 0;
+    press(0, 50);
+    frame();
+    CHECK_EQ(bar_slot(), KBM_ITEM_NO_ITEM);
+    g_can_select = 1;
+    press(0, 50);
+    frame();
+    CHECK_EQ(bar_slot(), 0);
+
+    const KbmItemStats *st = kbm_itemkeys_stats();
+    CHECK_EQ(st->blocked_busy, 2);
+    CHECK(st->selected_item >= 5);
+    CHECK(st->selected_no_item >= 4);
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "bar selected slot 0"));
+    CHECK(strstr(log, "the item is not usable on the item bar"));
+    CHECK(strstr(log, "the slot is empty"));
+    CHECK(strstr(log, "No Item"));
+    CHECK(strstr(log, "pouch slot  3: item  256 x4   NOT usable on the bar"));
+    CHECK(strstr(log, "ignored, the hunter cannot pick an item right now"));
+}
+
+static void test_item_slot_mapping(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[ItemHotkeys]\nItemSlot1 = 2\nItemSlot2 = 1\nSamplerMs = 0\n");
+    CHECK(load_module());
+    press(0, 50);
+    frame();
+    CHECK_EQ(bar_slot(), 1);
+    press(1, 50);
+    frame();
+    CHECK_EQ(bar_slot(), 0);
+    g_mod.shutdown();
+}
+
+static void test_item_double_press(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[ItemHotkeys]\nUsePadMask = 0x800\nUseHoldUpdates = 3\nSamplerMs = 0\n");
+    CHECK(load_module());
+
+    press(0, 200);
+    press(0, 100);
+    frame();
+    CHECK_EQ(bar_slot(), 0);
+    CHECK_EQ(spad_held(), 0);
+    frame();
+    CHECK_EQ(spad_held() & 0x800u, 0x800u);
+    CHECK_EQ(spad_new() & 0x800u, 0x800u);
+    kbm_st32(SPAD + KBM_SPAD_NEW, 0);
+    frame();
+    CHECK_EQ(spad_held() & 0x800u, 0x800u);
+    CHECK_EQ(spad_new() & 0x800u, 0);
+    frame();
+    CHECK_EQ(kbm_itemkeys_stats()->injected_updates, 3);
+    kbm_st32(SPAD + KBM_SPAD_HELD, 0);
+    frame();
+    CHECK_EQ(spad_held(), 0);
+    CHECK_EQ(kbm_itemkeys_stats()->uses, 1);
+
+    press(2, 200);
+    press(2, 100);
+    frame();
+    frame();
+    CHECK_EQ(bar_slot(), KBM_ITEM_NO_ITEM);
+    CHECK_EQ(spad_held(), 0);
+    CHECK_EQ(kbm_itemkeys_stats()->use_nothing, 1);
+
+    press(1, 550);
+    press(1, 50);
+    frame();
+    frame();
+    CHECK_EQ(bar_slot(), 1);
+    CHECK_EQ(spad_held(), 0);
+
+    press(1, 200);
+    press(1, 150);
+    press(1, 100);
+    frame();
+    CHECK_EQ(kbm_itemkeys_stats()->uses, 2);
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "use requested, pad mask 00000800"));
+    CHECK(strstr(log, "[double press]"));
+    CHECK(strstr(log, "nothing to use in that slot"));
+}
+
+static void test_item_use_unconfigured(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n");
+    CHECK(load_module());
+    press(0, 200);
+    press(0, 100);
+    frame();
+    frame();
+    CHECK_EQ(bar_slot(), 0);
+    CHECK_EQ(spad_held(), 0);
+    CHECK_EQ(kbm_itemkeys_stats()->use_unconfigured, 1);
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "UsePadMask is not set"));
+    CHECK(strstr(log, "ProbeInput"));
+}
+
+static void test_item_gates_and_local(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[ItemHotkeys]\nUsePadMask = 0x800\nSamplerMs = 0\n");
+    CHECK(load_module());
+    g_chat = true;
+    press(0, 50);
+    frame();
+    CHECK_EQ(bar_slot(), KBM_ITEM_NO_ITEM);
+    g_chat = false;
+    press(0, 50);
+    frame();
+    CHECK_EQ(bar_slot(), 0);
+
+    press(1, 900);
+    frame();
+    CHECK_EQ(bar_slot(), 0);
+    CHECK_EQ(kbm_itemkeys_stats()->dropped_old, 1);
+
+    kbm_st32(PLAYER + KBM_PL_IS_LOCAL_WORD, 0);
+    press(1, 50);
+    frame();
+    CHECK_EQ(bar_slot(), 0);
+    kbm_st32(PLAYER + KBM_PL_IS_LOCAL_WORD, 1);
+    frame();
+    CHECK_EQ(bar_slot(), 1);
+
+    press(0, 50);
+    frame_alt();
+    CHECK_EQ(bar_slot(), 1);
+    frame();
+    CHECK_EQ(bar_slot(), 0);
+    g_mod.shutdown();
+}
+
+static void test_item_disabled_and_conflict(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[ItemHotkeys]\nItemHotkeys = 0\nSamplerMs = 0\n");
+    CHECK(load_module());
+    CHECK(!kbm_itemkeys_enabled());
+    press(0, 50);
+    frame();
+    CHECK_EQ(bar_slot(), KBM_ITEM_NO_ITEM);
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "turned off by the config"));
+
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n");
+    CHECK(load_module());
+    log = read_log();
+    CHECK(strstr(log, "item key 5 (\"5\") is also the port's ItemRight bind"));
+    g_mod.shutdown();
+}
+
+static void test_item_probe(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[ItemHotkeys]\nProbeInput = 1\nSamplerMs = 0\n");
+    CHECK(load_module());
+    frame();
+    kbm_st32(SPAD + KBM_SPAD_HELD, 0x808);
+    kbm_st32(SPAD + KBM_SPAD_NEW, 0x800);
+    frame();
+    kbm_st32(SPAD + KBM_SPAD_HELD, 0x8);
+    frame();
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "probe: pad buttons 00000000 -> 00000808 (pressed 00000808, released 00000000)"));
+    CHECK(strstr(log, "probe: pad buttons 00000808 -> 00000008 (pressed 00000000, released 00000800)"));
+}
+
+static void test_item_sampler(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[ItemHotkeys]\nSamplerMs = 3\n");
+    CHECK(load_module());
+    g_keys[K_2] = true;
+    for (int i = 0; i < 100 && bar_slot() != 1; i++) {
+        usleep(5000);
+        frame();
+    }
+    CHECK_EQ(bar_slot(), 1);
+    g_keys[K_2] = false;
+    usleep(30000);
+    g_keys[K_1] = true;
+    for (int i = 0; i < 100 && bar_slot() != 0; i++) {
+        usleep(5000);
+        frame();
+    }
+    CHECK_EQ(bar_slot(), 0);
+    g_keys[K_1] = false;
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "key sampler running"));
+    CHECK(strstr(log, "key sampler stopped"));
+}
+
 static void test_passthrough_mode(void) {
     reset_world();
     write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[Movement]\nMode = passthrough\n");
@@ -724,6 +1017,14 @@ int main(void) {
     test_gates();
     test_snap_scope_and_deny();
     test_passthrough_mode();
+    test_item_select();
+    test_item_slot_mapping();
+    test_item_double_press();
+    test_item_use_unconfigured();
+    test_item_gates_and_local();
+    test_item_disabled_and_conflict();
+    test_item_probe();
+    test_item_sampler();
     test_smooth_turn();
     test_safe_area_hook();
     test_game_turn_mode();
