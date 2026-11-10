@@ -4,7 +4,7 @@ LOG_LEVEL ?= KBM_LOG_INFO
 BUILD     ?= release
 OUT       ?= build
 
-SRC := src/module.c src/boot.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/log.c src/platform.c
+SRC := src/module.c src/boot.c src/itemkeys.c src/ikcore.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/log.c src/platform.c
 OBJ_FLAGS_COMMON := -std=c11 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden -Iinclude -Isrc \
     -DKBM_VERSION='"$(VERSION)"' -DKBM_DEFAULT_LOG_LEVEL=$(LOG_LEVEL)
 
@@ -19,7 +19,7 @@ LINUX_CC   ?= gcc
 WINDOWS_CC ?= x86_64-w64-mingw32-gcc
 WINE       ?= $(shell command -v wine64 2>/dev/null || command -v wine 2>/dev/null || echo /usr/lib/wine/wine64)
 
-.PHONY: all linux windows test test-wine package-windows package-linux clean
+.PHONY: all linux windows test test-wine manifest package-windows package-linux clean
 
 all: linux
 
@@ -35,7 +35,7 @@ $(OUT)/windows/$(NAME).dll: $(SRC) src/*.h include/*.h
 	@mkdir -p $(dir $@)
 	$(WINDOWS_CC) $(OPT) $(OBJ_FLAGS_COMMON) -shared -static-libgcc -o $@ $(SRC)
 
-TEST_SRC := src/boot.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/log.c src/platform.c
+TEST_SRC := src/boot.c src/itemkeys.c src/ikcore.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/log.c src/platform.c
 
 test: $(OUT)/test_core $(OUT)/test_module $(OUT)/test_module_exported $(OUT)/test_module_nogate $(OUT)/test_module_nodispatch
 	$(OUT)/test_core
@@ -44,9 +44,9 @@ test: $(OUT)/test_core $(OUT)/test_module $(OUT)/test_module_exported $(OUT)/tes
 	$(OUT)/test_module_nogate
 	$(OUT)/test_module_nodispatch
 
-$(OUT)/test_core: tests/test_core.c src/movement.c src/config.c src/keys.c src/log.c src/platform.c src/host.c src/*.h
+$(OUT)/test_core: tests/test_core.c src/movement.c src/ikcore.c src/config.c src/keys.c src/log.c src/platform.c src/host.c src/*.h
 	@mkdir -p $(OUT)
-	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) -D_GNU_SOURCE -rdynamic -o $@ tests/test_core.c src/movement.c src/config.c src/keys.c src/log.c src/platform.c src/host.c -ldl -lpthread
+	$(LINUX_CC) -O1 -g $(OBJ_FLAGS_COMMON) -D_GNU_SOURCE -rdynamic -o $@ tests/test_core.c src/movement.c src/ikcore.c src/config.c src/keys.c src/log.c src/platform.c src/host.c -ldl -lpthread
 
 $(OUT)/test_module: tests/test_module.c src/module.c $(TEST_SRC) src/*.h
 	@mkdir -p $(OUT)
@@ -84,6 +84,9 @@ package-linux: linux
 	cp $(OUT)/linux/$(NAME).so $(OUT)/pkg-linux/engine_modules/$(NAME)/
 	cp config/$(NAME).ini $(OUT)/pkg-linux/engine_modules/$(NAME)/
 	cp README.md LICENSE NOTICE $(OUT)/pkg-linux/engine_modules/$(NAME)/
+
+manifest:
+	bash tools/make_manifest.sh
 
 clean:
 	rm -rf $(OUT)
