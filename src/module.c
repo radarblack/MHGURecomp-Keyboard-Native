@@ -7,6 +7,7 @@
 #include "engine_module_api.h"
 #include "hooks.h"
 #include "host.h"
+#include "itemkeys.h"
 #include "keys.h"
 #include "log.h"
 #include "platform.h"
@@ -47,6 +48,7 @@ static void module_shutdown(void) {
     g_shutdown_done = true;
     KBM_LOG(KBM_LOG_INFO, "shutdown: clean exit requested by the port (state: %s)", kbm_boot_state_name(kbm_boot_state()));
     kbm_boot_stop();
+    kbm_itemkeys_stop();
     kbm_driver_log_stats(KBM_LOG_INFO, "final");
     kbm_hooks_remove();
     int left = kbm_hooks_installed_count();
@@ -106,6 +108,7 @@ MHGU_ENGINE_MODULE_EXPORT bool mhgu_engine_module_entry(const MhguHost *host, Mh
         return false;
     }
 
+    kbm_itemkeys_init(host->setting);
     kbm_driver_reset();
     if (!kbm_boot_start()) {
         abort_load("the thread that waits for the game could not be started");
