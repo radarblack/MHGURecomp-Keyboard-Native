@@ -6,7 +6,6 @@
 #include <strings.h>
 
 #include "host.h"
-#include "log.h"
 
 #define KIND_NONE 0
 #define KIND_KEY 1
@@ -17,9 +16,6 @@ static KbmBind g_binds[KBM_B_COUNT];
 static const char *const k_ini_names[KBM_B_COUNT] = {"MoveUp", "MoveDown", "MoveLeft", "MoveRight", "Walk"};
 static const char *const k_defaults[KBM_B_COUNT] = {"W", "S", "A", "D", "Left Shift"};
 static const char *const k_labels[KBM_B_COUNT] = {"up", "down", "left", "right", "walk"};
-
-const char *kbm_bind_name(KbmBindId id) { return k_labels[id]; }
-int kbm_bind_count(KbmBindId id) { return g_binds[id].n; }
 
 int kbm_split_keys(const char *list, char out[][KBM_TOKEN_MAX], int max) {
     int n = 0;
@@ -56,6 +52,7 @@ bool kbm_parse_mouse_name(const char *name, int *button) {
 }
 
 bool kbm_bind_parse(KbmBind *b, const char *label, const char *text) {
+    (void)label;
     b->n = 0;
     char toks[KBM_BIND_KEYS + 2][KBM_TOKEN_MAX];
     int n = kbm_split_keys(text, toks, KBM_BIND_KEYS + 2);
@@ -63,18 +60,12 @@ bool kbm_bind_parse(KbmBind *b, const char *label, const char *text) {
         if (!strcasecmp(toks[i], "None")) continue;
         int mb = 0;
         if (kbm_parse_mouse_name(toks[i], &mb)) {
-            if (!g_host.sdl_mouse_state) {
-                KBM_LOG(KBM_LOG_WARN, "bind %s: '%s' needs SDL_GetMouseState which is missing, skipped", label, toks[i]);
-                continue;
-            }
+            if (!g_host.sdl_mouse_state) continue;
             if (b->n < KBM_BIND_KEYS) b->refs[b->n++] = (KbmKeyRef){KIND_MOUSE, mb};
             continue;
         }
         int sc = g_host.sdl_scancode_from_name(toks[i]);
-        if (sc <= 0) {
-            KBM_LOG(KBM_LOG_WARN, "bind %s: key '%s' is not an SDL key name, skipped", label, toks[i]);
-            continue;
-        }
+        if (sc <= 0) continue;
         if (b->n < KBM_BIND_KEYS) b->refs[b->n++] = (KbmKeyRef){KIND_KEY, sc};
     }
     return b->n > 0;
@@ -92,35 +83,23 @@ bool kbm_bind_has_scancode(const KbmBind *b, int scancode) {
     return false;
 }
 
-static void parse_bind(KbmBindId id, const char *text, const char *source) {
-    kbm_bind_parse(&g_binds[id], k_labels[id], text);
-    KBM_LOG(KBM_LOG_INFO, "bind %-5s = \"%s\" (%s): %d key(s)", k_labels[id], text, source, g_binds[id].n);
-}
+static void parse_bind(KbmBindId id, const char *text) { kbm_bind_parse(&g_binds[id], k_labels[id], text); }
 
 bool kbm_keys_init(const KbmConfig *cfg, KbmSettingFn setting) {
     memset(g_binds, 0, sizeof g_binds);
     for (int i = 0; i < KBM_B_COUNT; i++) {
         char text[KBM_KEY_TEXT];
-        const char *source = "default";
         snprintf(text, sizeof text, "%s", k_defaults[i]);
         if (!cfg->keys_from_port && cfg->key_text[i][0]) {
             snprintf(text, sizeof text, "%s", cfg->key_text[i]);
-            source = "module ini";
-        } else if (cfg->keys_from_port && setting && setting(k_ini_names[i], text, sizeof text)) {
-            source = "port ini";
-        } else if (cfg->keys_from_port) {
-            KBM_LOG(KBM_LOG_WARN, "bind %s: the port reports no '%s' setting, using the default", k_labels[i], k_ini_names[i]);
+        } else if (!(cfg->keys_from_port && setting && setting(k_ini_names[i], text, sizeof text))) {
             snprintf(text, sizeof text, "%s", k_defaults[i]);
         }
-        parse_bind(i, text, source);
+        parse_bind(i, text);
     }
     bool usable = true;
-    for (int i = KBM_B_UP; i <= KBM_B_RIGHT; i++) {
-        if (!g_binds[i].n) {
-            KBM_LOG(KBM_LOG_ERROR, "bind %s has no usable key: direct movement cannot work", k_labels[i]);
-            usable = false;
-        }
-    }
+    for (int i = KBM_B_UP; i <= KBM_B_RIGHT; i++)
+        if (!g_binds[i].n) usable = false;
     return usable;
 }
 
