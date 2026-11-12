@@ -45,6 +45,10 @@ static inline void kbm_st32(uint32_t a, uint32_t v) { memcpy(KBM_GPTR(a), &v, si
 #define KBM_ITEM_NO_ITEM 0x28u
 #define KBM_POUCH_ITEM_SLOTS 24
 #define KBM_GOT_SPAD 0x1a3931cu
+#define KBM_GOT_MODE 0x1a38d28u
+#define KBM_MODE_BYTE 0x50u
+#define KBM_GOT_STATE 0x1a38fc0u
+#define KBM_STATE_WORD 0x1e0u
 #define KBM_SPAD_HELD 0x6b9cu
 #define KBM_SPAD_LAST 0x6ba0u
 #define KBM_SPAD_NEW 0x6ba4u
