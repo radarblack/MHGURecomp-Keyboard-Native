@@ -11,6 +11,7 @@
 #include "engine_module_api.h"
 #include "guest.h"
 #include "host.h"
+#include "driver.h"
 #include "itemkeys.h"
 #include "platform.h"
 
@@ -23,6 +24,10 @@
 #define FAKE_CAN_SELECT 0x00300000u
 #define GOT_P 0x07d00000u
 #define SPAD 0x07c00000u
+#define STATE_P 0x07b00000u
+#define STATE_OBJ 0x07b10000u
+#define MODE_P 0x07b20000u
+#define MODE_OBJ 0x07b30000u
 #define MOCK_EXPORT __attribute__((visibility("default")))
 
 MHGU_ENGINE_MODULE_LINK bool mhgu_engine_module_entry(const MhguHost *host, MhguEngineModule *out);
@@ -214,6 +219,12 @@ static void reset_world(void) {
     kbm_st32(SPAD + KBM_SPAD_HELD, 0);
     kbm_st32(SPAD + KBM_SPAD_LAST, 0);
     kbm_st32(SPAD + KBM_SPAD_NEW, 0);
+    kbm_st32(KBM_GOT_STATE, STATE_P);
+    kbm_st32(STATE_P, STATE_OBJ);
+    kbm_st32(STATE_OBJ + KBM_STATE_WORD, 1);
+    kbm_st32(KBM_GOT_MODE, MODE_P);
+    kbm_st32(MODE_P, MODE_OBJ);
+    *(uint8_t *)KBM_GPTR(MODE_OBJ + KBM_MODE_BYTE) = 0;
 }
 
 static void write_ini(const char *text) {
@@ -802,6 +813,148 @@ static void test_item_sampler(void) {
     CHECK(strstr(log, "key sampler stopped"));
 }
 
+static void set_state(uint32_t v) { kbm_st32(STATE_OBJ + KBM_STATE_WORD, v); }
+static void set_mode(uint8_t m) { *(uint8_t *)KBM_GPTR(MODE_OBJ + KBM_MODE_BYTE) = m; }
+
+static void test_reversal_paths(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n");
+    CHECK(load_module());
+    kbm_st32(PLAYER + KBM_PL_REVERSED_WORD, 5);
+    g_keys[K_W] = true;
+    g_port_angle = 0x4000;
+    g_port_mag = 150;
+    frame();
+    CHECK_EQ(stick_angle(), 0xc000);
+    frame_alt();
+    CHECK_EQ(stick_angle(), 0x4000);
+    kbm_st32(PLAYER + KBM_PL_REVERSED_WORD, 0);
+    frame();
+    CHECK_EQ(stick_angle(), 0x4000);
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "reversed-stick word is 5: the stick is reversed"));
+    CHECK(strstr(log, "reversed-stick word is back to 0"));
+
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n");
+    CHECK(load_module());
+    kbm_st32(PLAYER + KBM_PL_REVERSED_WORD, 9);
+    g_keys[K_W] = true;
+    frame_alt();
+    CHECK_EQ(stick_angle(), 0x4000);
+    g_mod.shutdown();
+    log = read_log();
+    CHECK(strstr(log, "ignored, the safe-area input path of the game never reverses the stick"));
+}
+
+static void test_input_blocking(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n");
+    CHECK(load_module());
+    g_keys[K_W] = true;
+    g_port_angle = 0x1111;
+    g_port_mag = 0;
+
+    const uint32_t blocked[] = {0, 2, 3, 4, 5, 6, 8, 12, 26, 28, 99};
+    for (size_t i = 0; i < sizeof blocked / sizeof blocked[0]; i++) {
+        set_state(blocked[i]);
+        kbm_st16(PLAYER + KBM_PL_STICK_ANGLE, 0);
+        frame_alt();
+        CHECK_EQ(stick_angle(), 0x1111);
+    }
+    const uint32_t accepted[] = {1, 7, 27};
+    for (size_t i = 0; i < sizeof accepted / sizeof accepted[0]; i++) {
+        set_state(accepted[i]);
+        frame_alt();
+        CHECK_EQ(stick_angle(), 0x4000);
+    }
+    set_state(1);
+
+    const uint8_t stick_locked[] = {5, 6};
+    for (size_t i = 0; i < 2; i++) {
+        set_mode(stick_locked[i]);
+        g_port_angle = 0x2222;
+        frame();
+        CHECK_EQ(stick_angle(), 0x2222);
+        press(0, 50);
+        frame();
+        CHECK_EQ(bar_slot(), KBM_ITEM_NO_ITEM);
+    }
+    const uint8_t buttons_locked[] = {4, 7, 9};
+    for (size_t i = 0; i < 3; i++) {
+        set_mode(buttons_locked[i]);
+        frame();
+        CHECK_EQ(stick_angle(), 0x4000);
+        press(0, 50);
+        frame();
+        CHECK_EQ(bar_slot(), KBM_ITEM_NO_ITEM);
+    }
+    set_mode(0);
+    frame();
+    CHECK_EQ(stick_angle(), 0x4000);
+    press(0, 50);
+    frame();
+    CHECK_EQ(bar_slot(), 0);
+    CHECK(kbm_driver_stats()->input_locked >= 2);
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "game input blocked: game state 3 does not take input"));
+    CHECK(strstr(log, "game input blocked: game mode 5 locks the stick and buttons"));
+    CHECK(strstr(log, "game input blocked: game mode 4 locks the buttons"));
+    CHECK(strstr(log, "game input accepted again"));
+}
+
+static void test_respect_locks_off(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[Movement]\nRespectGameLocks = 0\n");
+    CHECK(load_module());
+    g_keys[K_W] = true;
+    g_port_angle = 0x1111;
+    set_state(3);
+    frame_alt();
+    CHECK_EQ(stick_angle(), 0x4000);
+    set_state(1);
+    set_mode(5);
+    frame();
+    CHECK_EQ(stick_angle(), 0x4000);
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(!strstr(log, "game input blocked"));
+}
+
+static void test_first_read_logs(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n");
+    CHECK(load_module());
+    g_keys[K_W] = true;
+    set_state(7);
+    set_mode(0);
+    frame_alt();
+    frame();
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "the game state is 7 at the first input update"));
+    CHECK(strstr(log, "the game mode byte is 0 at the first input update"));
+}
+
+static void test_lock_read_failure(void) {
+    reset_world();
+    write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n");
+    CHECK(load_module());
+    kbm_st32(KBM_GOT_STATE, 0);
+    kbm_st32(KBM_GOT_MODE, 0);
+    g_keys[K_W] = true;
+    g_port_angle = 0x1111;
+    frame();
+    CHECK_EQ(stick_angle(), 0x4000);
+    frame_alt();
+    CHECK_EQ(stick_angle(), 0x4000);
+    g_mod.shutdown();
+    char *log = read_log();
+    CHECK(strstr(log, "could not read the game's mode byte"));
+}
+
 static void test_passthrough_mode(void) {
     reset_world();
     write_ini("[General]\nLogLevel = info\nStatsIntervalSeconds = 0\n[Movement]\nMode = passthrough\n");
@@ -1025,6 +1178,11 @@ int main(void) {
     test_item_disabled_and_conflict();
     test_item_probe();
     test_item_sampler();
+    test_reversal_paths();
+    test_input_blocking();
+    test_lock_read_failure();
+    test_respect_locks_off();
+    test_first_read_logs();
     test_smooth_turn();
     test_safe_area_hook();
     test_game_turn_mode();
