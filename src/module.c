@@ -15,8 +15,7 @@
 #define KBM_VERSION "0.1.0"
 #endif
 
-#define KBM_MODULE_NAME "keyboard_movement"
-#define KBM_INI_NAME "keyboard_movement.ini"
+#define KBM_INI_NAME "BetterKeyboard.ini"
 
 static const char *const k_checked_ports[] = {"0.14.", "0.15.", "0.16."};
 
