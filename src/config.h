@@ -37,6 +37,7 @@ typedef struct KbmConfig {
     double turn_max_deg;
     KbmTurn turn;
     bool safe_area_hook;
+    bool respect_locks;
     bool item_hotkeys;
     uint32_t ik_double_ms;
     uint32_t ik_use_mask;
