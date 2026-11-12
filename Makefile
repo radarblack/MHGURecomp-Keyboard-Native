@@ -1,12 +1,11 @@
 NAME      := keyboard_movement
 VERSION   ?= $(shell cat VERSION)
-LOG_LEVEL ?= KBM_LOG_INFO
 BUILD     ?= release
 OUT       ?= build
 
-SRC := src/module.c src/boot.c src/itemkeys.c src/ikcore.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/log.c src/platform.c
+SRC := src/module.c src/boot.c src/itemkeys.c src/ikcore.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/platform.c
 OBJ_FLAGS_COMMON := -std=c11 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden -Iinclude -Isrc \
-    -DKBM_VERSION='"$(VERSION)"' -DKBM_DEFAULT_LOG_LEVEL=$(LOG_LEVEL)
+    -DKBM_VERSION='"$(VERSION)"'
 
 ifeq ($(BUILD),debug)
 OPT := -O0 -g
