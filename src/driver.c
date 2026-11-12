@@ -33,6 +33,12 @@ static SeenAct g_seen[MAX_SEEN_ACTS];
 static int g_n_seen;
 static bool g_logged_default_mag[3];
 static uint64_t g_last_stats_ms;
+static int g_lock_note = -1;
+static bool g_logged_state;
+static bool g_logged_mode;
+static char g_lock_why[96];
+static int g_reversal_note = -1;
+static bool g_warned_lock_read;
 
 void kbm_driver_reset(void) {
     memset(&g_stats, 0, sizeof g_stats);
@@ -46,6 +52,12 @@ void kbm_driver_reset(void) {
     g_n_seen = 0;
     memset(g_logged_default_mag, 0, sizeof g_logged_default_mag);
     g_last_stats_ms = kbm_now_ms();
+    g_lock_note = -1;
+    g_logged_state = false;
+    g_logged_mode = false;
+    g_lock_why[0] = 0;
+    g_reversal_note = -1;
+    g_warned_lock_read = false;
 }
 
 const KbmStats *kbm_driver_stats(void) { return &g_stats; }
@@ -68,8 +80,8 @@ static const char *gate_reason(void) {
 void kbm_driver_log_stats(KbmLogLevel level, const char *why) {
     const KbmStats *s = &g_stats;
     kbm_itemkeys_log_stats(level, why);
-    KBM_LOG(level, "stats (%s): input calls=%llu not_local=%llu suspended=%llu idle=%llu driven=%llu injected=%llu reversals=%llu",
-        why, (unsigned long long)s->input_calls, (unsigned long long)s->input_not_local, (unsigned long long)s->input_suspended,
+    KBM_LOG(level, "stats (%s): input calls=%llu not_local=%llu suspended=%llu locked=%llu idle=%llu driven=%llu injected=%llu reversals=%llu",
+        why, (unsigned long long)s->input_calls, (unsigned long long)s->input_not_local, (unsigned long long)s->input_suspended, (unsigned long long)s->input_locked,
         (unsigned long long)s->input_idle, (unsigned long long)s->input_driven, (unsigned long long)s->injected,
         (unsigned long long)s->reversals);
     KBM_LOG(level, "stats (%s): magnitude game=%llu learned=%llu default=%llu | learned walk=%d run=%d", why,
@@ -125,6 +137,87 @@ static int choose_magnitude(const KbmMove *m, int game_mag, const char **source)
     return def;
 }
 
+typedef enum LockLevel { LOCK_NONE = 0, LOCK_BUTTONS, LOCK_ALL } LockLevel;
+
+static bool sane_addr(uint32_t a) { return a >= 0x00200000u && a < 0xF0000000u && !(a & 3u); }
+
+static bool read_chain(uint32_t got, uint32_t *obj) {
+    uint32_t p = kbm_ld32(got);
+    if (!sane_addr(p)) return false;
+    uint32_t o = kbm_ld32(p);
+    if (!sane_addr(o)) return false;
+    *obj = o;
+    return true;
+}
+
+static LockLevel input_lock(bool alt, char *why, size_t why_size) {
+    uint32_t obj = 0;
+    if (!g_cfg.respect_locks) return LOCK_NONE;
+    if (alt) {
+        if (!read_chain(KBM_GOT_STATE, &obj)) {
+            if (!g_warned_lock_read) {
+                g_warned_lock_read = true;
+                KBM_LOG(KBM_LOG_WARN, "could not read the game's state (pointer chain at %08x): the module cannot tell when the game blocks input", KBM_GOT_STATE);
+            }
+            return LOCK_NONE;
+        }
+        uint32_t state = kbm_ld32(obj + KBM_STATE_WORD);
+        if (!g_logged_state) {
+            g_logged_state = true;
+            KBM_LOG(KBM_LOG_INFO, "safe-area path: the game state is %u at the first input update (input is accepted in states 1, 7 and 27)", (unsigned)state);
+        }
+        uint32_t u = state - 1u;
+        if (u <= 0x1au && ((0x4000041u >> u) & 1u)) return LOCK_NONE;
+        snprintf(why, why_size, "game state %u does not take input", (unsigned)state);
+        return LOCK_ALL;
+    }
+    if (!read_chain(KBM_GOT_MODE, &obj)) {
+        if (!g_warned_lock_read) {
+            g_warned_lock_read = true;
+            KBM_LOG(KBM_LOG_WARN, "could not read the game's mode byte (pointer chain at %08x): the module cannot tell when the game locks input", KBM_GOT_MODE);
+        }
+        return LOCK_NONE;
+    }
+    unsigned m = (unsigned)(*(const uint8_t *)KBM_GPTR(obj + KBM_MODE_BYTE));
+    if (!g_logged_mode) {
+        g_logged_mode = true;
+        KBM_LOG(KBM_LOG_INFO, "quest path: the game mode byte is %u at the first input update (the stick is locked in modes 5 and 6, the buttons in 4 to 7 and 9)", m);
+    }
+    if (m == 5 || m == 6) {
+        snprintf(why, why_size, "game mode %u locks the stick and buttons", m);
+        return LOCK_ALL;
+    }
+    if (m == 4 || m == 7 || m == 9) {
+        snprintf(why, why_size, "game mode %u locks the buttons", m);
+        return LOCK_BUTTONS;
+    }
+    return LOCK_NONE;
+}
+
+static void note_lock(LockLevel lock, const char *why) {
+    int now = (int)lock;
+    if (now == g_lock_note && (lock == LOCK_NONE || !strcmp(why, g_lock_why))) return;
+    if (lock != LOCK_NONE) {
+        KBM_LOG(KBM_LOG_INFO, "game input blocked: %s (the module leaves the input alone)", why);
+        snprintf(g_lock_why, sizeof g_lock_why, "%s", why);
+    } else if (g_lock_note > 0) {
+        KBM_LOG(KBM_LOG_INFO, "game input accepted again");
+    }
+    g_lock_note = now;
+}
+
+static void note_reversal(bool alt, int32_t word) {
+    int now = word > 0 ? 1 : 0;
+    if (now == g_reversal_note) return;
+    if (now) {
+        KBM_LOG(KBM_LOG_INFO, "reversed-stick word is %d: %s", (int)word,
+            alt ? "ignored, the safe-area input path of the game never reverses the stick" : "the stick is reversed, as the game does");
+    } else if (g_reversal_note > 0) {
+        KBM_LOG(KBM_LOG_INFO, "reversed-stick word is back to 0");
+    }
+    g_reversal_note = now;
+}
+
 void kbm_driver_before_input(KbmCpu *c, uint32_t pl, bool alt) {
     if (!alt) kbm_itemkeys_before_input(c, pl);
 }
@@ -139,7 +232,16 @@ void kbm_driver_on_input(KbmCpu *c, uint32_t pl, bool alt) {
 
     const char *gate = gate_reason();
     note_gate(gate);
-    if (!alt) kbm_itemkeys_after_input(c, pl, gate);
+    char lock_why[96];
+    LockLevel lock = input_lock(alt, lock_why, sizeof lock_why);
+    note_lock(lock, lock_why);
+    if (!alt) kbm_itemkeys_after_input(c, pl, gate ? gate : (lock != LOCK_NONE ? "game input lock" : NULL));
+    if (lock == LOCK_ALL && !gate) {
+        g_stats.input_locked++;
+        g_driving = false;
+        g_last_active = false;
+        return;
+    }
     if (gate) {
         g_stats.input_suspended++;
         g_driving = false;
@@ -184,7 +286,9 @@ void kbm_driver_on_input(KbmCpu *c, uint32_t pl, bool alt) {
     }
 
     uint16_t angle = m.angle;
-    if ((int32_t)kbm_ld32(pl + KBM_PL_REVERSED_WORD) > 0) angle = (uint16_t)(angle - 0x8000);
+    int32_t reversed_word = (int32_t)kbm_ld32(pl + KBM_PL_REVERSED_WORD);
+    note_reversal(alt, reversed_word);
+    if (!alt && reversed_word > 0) angle = (uint16_t)(angle - 0x8000);
     int game_mag = (int16_t)kbm_ld16(pl + KBM_PL_STICK_MAG);
     const char *source = "";
     int mag = choose_magnitude(&m, game_mag, &source);
