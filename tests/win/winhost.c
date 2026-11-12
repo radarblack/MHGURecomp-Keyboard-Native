@@ -150,7 +150,7 @@ int main(void) {
     Sleep(500);
     CHECKW(fnhook_get(KBM_FN_PL_INPUT_UPDATE) == 0);
 
-    commit(0x200000, 0x1800000);
+    commit(0x200000, 0x1a00000);
     commit(PLAYER, 0x10000);
     for (size_t i = 0; i < KBM_GUEST_SIG_COUNT; i++)
         for (int w = 0; w < KBM_SIG_WORDS; w++) kbm_st32(kbm_guest_sigs[i].addr + 4u * (uint32_t)w, kbm_guest_sigs[i].words[w]);
