@@ -27,6 +27,7 @@ void kbm_config_defaults(KbmConfig *cfg, KbmLogLevel default_level) {
     cfg->turn_min_deg = 12.0;
     cfg->turn_max_deg = 60.0;
     cfg->safe_area_hook = true;
+    cfg->respect_locks = true;
     cfg->item_hotkeys = true;
     cfg->ik_double_ms = 350;
     cfg->ik_use_mask = 0;
@@ -156,6 +157,9 @@ static void apply(KbmConfig *cfg, const char *key, const char *val, int line) {
         double v = strtod(val, &end);
         if (end != val && v >= 0.0 && v <= 360.0) cfg->turn_max_deg = v;
         else goto bad;
+    } else if (!strcasecmp(key, "RespectGameLocks")) {
+        if (kbm_parse_bool(val, &b)) cfg->respect_locks = b;
+        else goto bad;
     } else if (!strcasecmp(key, "SafeAreaHook")) {
         if (kbm_parse_bool(val, &b)) cfg->safe_area_hook = b;
         else goto bad;
@@ -272,9 +276,9 @@ void kbm_config_log(const KbmConfig *cfg) {
     KBM_LOG(KBM_LOG_INFO, "config: enabled=%d mode=%s opposite_keys=%s snap_facing=%d snap_scope=%s log_level=%s log_file=%d",
         cfg->enabled, mode_name(cfg->mode), cfg->socd == KBM_SOCD_LAST ? "last" : "neutral", cfg->snap_facing,
         cfg->snap_scope == KBM_SCOPE_UPDATE ? "update" : "all", kbm_log_level_name(cfg->log_level), cfg->log_file);
-    KBM_LOG(KBM_LOG_INFO, "config: turn_mode=%s response=%.2f min_step=%.1f deg (%u units) max_step=%.1f deg (%u units) safe_area_hook=%d",
+    KBM_LOG(KBM_LOG_INFO, "config: turn_mode=%s response=%.2f min_step=%.1f deg (%u units) max_step=%.1f deg (%u units) safe_area_hook=%d respect_locks=%d",
         cfg->snap_facing ? turn_mode_name(cfg->turn_mode) : "game (SnapFacing = 0)", cfg->turn_response, cfg->turn_min_deg,
-        (unsigned)cfg->turn.min_step, cfg->turn_max_deg, (unsigned)cfg->turn.max_step, cfg->safe_area_hook);
+        (unsigned)cfg->turn.min_step, cfg->turn_max_deg, (unsigned)cfg->turn.max_step, cfg->safe_area_hook, cfg->respect_locks);
     KBM_LOG(KBM_LOG_INFO, "config: item_hotkeys=%d double_press=%ums use_mask=0x%x hold=%u delay=%u sampler=%ums probe_input=%d",
         cfg->item_hotkeys, (unsigned)cfg->ik_double_ms, (unsigned)cfg->ik_use_mask, (unsigned)cfg->ik_use_hold,
         (unsigned)cfg->ik_use_delay, (unsigned)cfg->ik_sampler_ms, cfg->probe_input);
