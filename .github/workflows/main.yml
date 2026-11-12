@@ -1,4 +1,4 @@
-name: Build keyboard_movement
+name: Build BetterKeyboard
 
 on:
   workflow_dispatch:
@@ -39,7 +39,7 @@ permissions:
   contents: read
 
 env:
-  MODULE_NAME: keyboard_movement
+  MODULE_NAME: BetterKeyboard
 
 jobs:
   compat:
@@ -168,6 +168,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag }}
-          name: keyboard_movement ${{ inputs.release_tag }}
+          name: BetterKeyboard ${{ inputs.release_tag }}
           files: dist/*.zip
           generate_release_notes: true
