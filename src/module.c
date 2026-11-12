@@ -23,7 +23,7 @@
 #define KBM_INI_NAME "keyboard_movement.ini"
 #define KBM_LOG_NAME "keyboard_movement.log"
 
-static const char *const k_checked_ports[] = {"0.14.", "0.15."};
+static const char *const k_checked_ports[] = {"0.14.", "0.15.", "0.16."};
 
 static bool g_loaded;
 static bool g_shutdown_done;
