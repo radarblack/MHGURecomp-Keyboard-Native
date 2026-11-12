@@ -10,6 +10,7 @@ typedef struct KbmStats {
     uint64_t input_calls;
     uint64_t input_not_local;
     uint64_t input_suspended;
+    uint64_t input_locked;
     uint64_t input_idle;
     uint64_t input_driven;
     uint64_t injected;
