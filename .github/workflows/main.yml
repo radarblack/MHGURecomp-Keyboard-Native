@@ -10,14 +10,6 @@ on:
           - release
           - debug
         default: release
-      log_level:
-        description: Default log level compiled in (used when keyboard_movement.ini does not set LogLevel)
-        type: choice
-        options:
-          - info
-          - debug
-          - trace
-        default: info
       platforms:
         description: Platforms to build
         type: choice
@@ -110,9 +102,8 @@ jobs:
         id: ver
         run: |
           echo "version=$(cat VERSION)+${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          echo "level=KBM_LOG_$(echo '${{ inputs.log_level }}' | tr a-z A-Z)" >> "$GITHUB_OUTPUT"
       - name: Build the DLL and package it
-        run: make package-windows BUILD=${{ inputs.build_type }} VERSION="${{ steps.ver.outputs.version }}" LOG_LEVEL=${{ steps.ver.outputs.level }}
+        run: make package-windows BUILD=${{ inputs.build_type }} VERSION="${{ steps.ver.outputs.version }}"
       - name: Show what was built
         run: |
           ls -l build/pkg-windows/engine_modules/${MODULE_NAME}
@@ -141,9 +132,8 @@ jobs:
         id: ver
         run: |
           echo "version=$(cat VERSION)+${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          echo "level=KBM_LOG_$(echo '${{ inputs.log_level }}' | tr a-z A-Z)" >> "$GITHUB_OUTPUT"
       - name: Build the shared library and package it
-        run: make package-linux BUILD=${{ inputs.build_type }} VERSION="${{ steps.ver.outputs.version }}" LOG_LEVEL=${{ steps.ver.outputs.level }}
+        run: make package-linux BUILD=${{ inputs.build_type }} VERSION="${{ steps.ver.outputs.version }}"
       - name: Zip the package
         run: |
           cd build/pkg-linux
