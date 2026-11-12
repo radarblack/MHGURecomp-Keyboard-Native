@@ -3,7 +3,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "log.h"
 #include "ikcore.h"
 #include "turn.h"
 
@@ -22,9 +21,6 @@ typedef struct KbmActId {
 
 typedef struct KbmConfig {
     bool enabled;
-    KbmLogLevel log_level;
-    bool log_file;
-    uint32_t stats_interval_s;
     uint32_t hook_wait_s;
     bool strict_version;
     bool require_gates;
@@ -44,7 +40,6 @@ typedef struct KbmConfig {
     uint32_t ik_use_hold;
     uint32_t ik_use_delay;
     uint32_t ik_sampler_ms;
-    bool probe_input;
     char ik_key_text[KBM_IK_KEYS][KBM_KEY_TEXT];
     int ik_slot[KBM_IK_KEYS];
     KbmSnapScope snap_scope;
@@ -58,10 +53,9 @@ typedef struct KbmConfig {
 
 extern KbmConfig g_cfg;
 
-void kbm_config_defaults(KbmConfig *cfg, KbmLogLevel default_level);
+void kbm_config_defaults(KbmConfig *cfg);
 bool kbm_config_load(KbmConfig *cfg, const char *path);
 bool kbm_parse_bool(const char *text, bool *out);
 int kbm_parse_actlist(const char *text, KbmActId *out, int max);
 bool kbm_act_listed(const KbmActId *list, int n, uint16_t st, uint16_t no);
 void kbm_config_finalize(KbmConfig *cfg);
-void kbm_config_log(const KbmConfig *cfg);
