@@ -61,8 +61,6 @@ bool kbm_readable(const void *p, size_t n) {
     return true;
 }
 
-const char *kbm_platform_name(void) { return "windows"; }
-
 #else
 
 #include <dlfcn.h>
@@ -145,7 +143,5 @@ bool kbm_readable(const void *p, size_t n) {
     }
     return true;
 }
-
-const char *kbm_platform_name(void) { return "linux"; }
 
 #endif
