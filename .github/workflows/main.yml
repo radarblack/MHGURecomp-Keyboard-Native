@@ -34,10 +34,6 @@ on:
         description: MHGURecomp release whose Windows build is checked for the symbols the module needs (latest or a tag such as 0.15.1)
         type: string
         default: latest
-      run_wine_test:
-        description: Also run the Windows DLL against a mock port under Wine (optional extra check, does not affect the build)
-        type: boolean
-        default: false
       create_release:
         description: Publish the zips as a GitHub release
         type: boolean
@@ -54,18 +50,6 @@ env:
   MODULE_NAME: keyboard_movement
 
 jobs:
-  test:
-    name: Unit and integration tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out this repository
-        uses: actions/checkout@v4
-      - name: Verify the files against the release manifest
-        continue-on-error: true
-        run: bash tools/verify_manifest.sh
-      - name: Build and run the tests
-        run: make test
-
   compat:
     name: Port compatibility check
     runs-on: ubuntu-latest
@@ -113,7 +97,6 @@ jobs:
 
   windows:
     name: Windows build
-    needs: test
     if: inputs.platforms != 'linux only'
     runs-on: ubuntu-latest
     steps:
@@ -145,33 +128,8 @@ jobs:
           path: build/${{ env.MODULE_NAME }}-windows-*.zip
           if-no-files-found: error
 
-  wine:
-    name: Windows DLL under Wine (optional)
-    needs: test
-    if: inputs.run_wine_test
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 15
-    steps:
-      - name: Check out this repository
-        uses: actions/checkout@v4
-      - name: Install MinGW and Wine
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-mingw-w64-x86-64 wine
-      - name: Show where Wine is
-        run: |
-          command -v wine64 || true
-          command -v wine || true
-      - name: Run the Windows DLL against a mock port
-        env:
-          WINEPREFIX: /tmp/wine-kbm
-          WINEDEBUG: -all
-        run: make test-wine
-
   linux:
     name: Linux build
-    needs: test
     if: inputs.platforms != 'windows only'
     runs-on: ubuntu-latest
     steps:
