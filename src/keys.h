@@ -31,5 +31,3 @@ int kbm_split_keys(const char *list, char out[][KBM_TOKEN_MAX], int max);
 bool kbm_parse_mouse_name(const char *name, int *button);
 bool kbm_keys_init(const KbmConfig *cfg, KbmSettingFn setting);
 void kbm_keys_sample(KbmKeys *out);
-const char *kbm_bind_name(KbmBindId id);
-int kbm_bind_count(KbmBindId id);
