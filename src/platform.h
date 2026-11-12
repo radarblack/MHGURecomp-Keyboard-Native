@@ -35,4 +35,3 @@ void kbm_sleep_ms(unsigned ms);
 void *kbm_find_symbol(const char *name);
 void *kbm_find_symbol_in_lib(const char *lib, const char *name);
 bool kbm_readable(const void *p, size_t n);
-const char *kbm_platform_name(void);
