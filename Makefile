@@ -1,4 +1,4 @@
-NAME      := keyboard_movement
+NAME      := BetterKeyboard
 VERSION   ?= $(shell cat VERSION)
 BUILD     ?= release
 OUT       ?= build
@@ -37,14 +37,12 @@ package-windows: windows
 	mkdir -p $(OUT)/pkg-windows/engine_modules/$(NAME)
 	cp $(OUT)/windows/$(NAME).dll $(OUT)/pkg-windows/engine_modules/$(NAME)/
 	cp config/$(NAME).ini $(OUT)/pkg-windows/engine_modules/$(NAME)/
-	cp README.md LICENSE NOTICE $(OUT)/pkg-windows/engine_modules/$(NAME)/
 
 package-linux: linux
 	rm -rf $(OUT)/pkg-linux
 	mkdir -p $(OUT)/pkg-linux/engine_modules/$(NAME)
 	cp $(OUT)/linux/$(NAME).so $(OUT)/pkg-linux/engine_modules/$(NAME)/
 	cp config/$(NAME).ini $(OUT)/pkg-linux/engine_modules/$(NAME)/
-	cp README.md LICENSE NOTICE $(OUT)/pkg-linux/engine_modules/$(NAME)/
 
 manifest:
 	bash tools/make_manifest.sh
