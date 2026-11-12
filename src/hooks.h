@@ -15,12 +15,9 @@ typedef struct KbmHook {
     bool enabled;
     bool installed;
     bool passthrough;
-    bool alive_logged;
-    uint64_t calls;
 } KbmHook;
 
 extern KbmHook g_hooks[KBM_H_COUNT];
 
 bool kbm_hooks_install(void);
 void kbm_hooks_remove(void);
-int kbm_hooks_installed_count(void);
