@@ -12,4 +12,3 @@ typedef enum KbmBootState {
 bool kbm_boot_start(void);
 void kbm_boot_stop(void);
 KbmBootState kbm_boot_state(void);
-const char *kbm_boot_state_name(KbmBootState state);
