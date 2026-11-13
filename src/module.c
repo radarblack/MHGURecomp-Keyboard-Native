@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "boot.h"
+#include "aimkeep.h"
 #include "config.h"
 #include "driver.h"
 #include "engine_module_api.h"
@@ -31,13 +32,17 @@ static bool port_version_checked(const char *v) {
     return false;
 }
 
-static void abort_load(void) { kbm_hooks_remove(); }
+static void abort_load(void) {
+    kbm_aimkeep_remove();
+    kbm_hooks_remove();
+}
 
 static void module_shutdown(void) {
     if (g_shutdown_done) return;
     g_shutdown_done = true;
     kbm_boot_stop();
     kbm_itemkeys_stop();
+    kbm_aimkeep_remove();
     kbm_hooks_remove();
     g_loaded = false;
 }
@@ -52,7 +57,7 @@ MHGU_ENGINE_MODULE_EXPORT bool mhgu_engine_module_entry(const MhguHost *host, Mh
     kbm_config_load(&g_cfg, ini);
 
     if (!g_cfg.enabled) {
-        if (out) out->name = "Keyboard Movement (disabled)";
+        if (out) out->name = "BetterKeyboard (disabled)";
         return true;
     }
 
@@ -78,7 +83,7 @@ MHGU_ENGINE_MODULE_EXPORT bool mhgu_engine_module_entry(const MhguHost *host, Mh
     }
 
     if (out) {
-        out->name = "Keyboard Movement";
+        out->name = "BetterKeyboard";
         out->shutdown = module_shutdown;
     }
     g_loaded = true;
