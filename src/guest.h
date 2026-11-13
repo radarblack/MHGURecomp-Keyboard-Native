@@ -5,6 +5,7 @@
 #define KBM_GUEST_BASE 0x10000000000ull
 #define KBM_GPTR(a) ((void *)(uintptr_t)(KBM_GUEST_BASE + (uint32_t)(a)))
 
+static inline uint8_t kbm_ld8(uint32_t a) { return *(const uint8_t *)KBM_GPTR(a); }
 static inline uint16_t kbm_ld16(uint32_t a) {
     uint16_t v;
     memcpy(&v, KBM_GPTR(a), sizeof v);
@@ -17,6 +18,7 @@ static inline uint32_t kbm_ld32(uint32_t a) {
     return v;
 }
 
+static inline void kbm_st8(uint32_t a, uint8_t v) { *(uint8_t *)KBM_GPTR(a) = v; }
 static inline void kbm_st16(uint32_t a, uint16_t v) { memcpy(KBM_GPTR(a), &v, sizeof v); }
 static inline void kbm_st32(uint32_t a, uint32_t v) { memcpy(KBM_GPTR(a), &v, sizeof v); }
 
@@ -24,6 +26,8 @@ static inline void kbm_st32(uint32_t a, uint32_t v) { memcpy(KBM_GPTR(a), &v, si
 #define KBM_FN_PL_INPUT_UPDATE_ALT 0x48d1f0u
 #define KBM_FN_FACE_STICK 0x47f678u
 #define KBM_FN_PL_IS_LOCAL 0x47bcd0u
+#define KBM_FN_KINECT_SYNTH 0x13b1dc8u
+#define KBM_FN_ROLE_MASK 0x85f93cu
 #define KBM_FN_PL_STICK_REVERSED 0x4f5478u
 #define KBM_FN_PL_BUSY 0x47b918u
 #define KBM_FN_POUCH_ENTRY 0x487fecu
@@ -37,6 +41,20 @@ static inline void kbm_st32(uint32_t a, uint32_t v) { memcpy(KBM_GPTR(a), &v, si
 #define KBM_PL_YAW_TARGET 0x14a0u
 #define KBM_PL_ACT_ST 0x2506u
 #define KBM_PL_ACT_NO 0x250au
+#define KBM_PL_ACT_REQ 0x1414u
+#define KBM_PL_AIM_TOGGLE 0x3334u
+#define KBM_PL_AIM_TIMER 0x3338u
+#define KBM_PL_HELD_WORD 0x13fcu
+#define KBM_AK_ACT_KINECT 0x1bu
+#define KBM_AK_ACT_AIM 0x1cu
+#define KBM_AK_WALK_A 0x114u
+#define KBM_AK_WALK_B 0x118u
+#define KBM_AK_TIMER_SET 0x41d00000u
+#define KBM_AK_GOT_AIMMODE 0x1a38bb4u
+#define KBM_AK_AIMMODE_BYTE 0x6cu
+#define KBM_AK_STATE_BIT 0x800u
+#define KBM_VF_DRAWN 0x178u
+#define KBM_VF_STATE_QUERY 0x25cu
 #define KBM_PL_REVERSED_WORD 0x28b8u
 
 #define KBM_VF_CAN_SELECT 0x230u
