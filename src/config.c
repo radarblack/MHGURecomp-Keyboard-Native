@@ -134,6 +134,8 @@ static void apply(KbmConfig *cfg, const char *key, const char *val) {
         if (kbm_parse_bool(val, &b)) cfg->respect_locks = b;
     } else if (!strcasecmp(key, "SafeAreaHook")) {
         if (kbm_parse_bool(val, &b)) cfg->safe_area_hook = b;
+    } else if (!strcasecmp(key, "AimWhileMoving")) {
+        if (kbm_parse_bool(val, &b)) cfg->aim_while_moving = b;
     } else if (!strcasecmp(key, "ItemHotkeys")) {
         if (kbm_parse_bool(val, &b)) cfg->item_hotkeys = b;
     } else if (!strcasecmp(key, "DoublePressMs")) {
