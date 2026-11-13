@@ -34,6 +34,7 @@ typedef struct KbmConfig {
     KbmTurn turn;
     bool safe_area_hook;
     bool respect_locks;
+    bool aim_while_moving;
     bool item_hotkeys;
     uint32_t ik_double_ms;
     uint32_t ik_use_mask;
