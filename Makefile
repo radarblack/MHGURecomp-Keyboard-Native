@@ -1,4 +1,4 @@
-NAME      := keyboard_movement
+NAME      := BetterKeyboard
 VERSION   ?= $(shell cat VERSION)
 BUILD     ?= release
 OUT       ?= build
