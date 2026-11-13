@@ -1,5 +1,6 @@
 #include "boot.h"
 
+#include "aimkeep.h"
 #include "config.h"
 #include "driver.h"
 #include "guest.h"
@@ -71,6 +72,7 @@ static void worker(void *unused) {
         }
         kbm_sleep_ms(500);
     }
+    kbm_aimkeep_install();
     kbm_itemkeys_start();
     set_state(KBM_BOOT_ACTIVE);
 }
