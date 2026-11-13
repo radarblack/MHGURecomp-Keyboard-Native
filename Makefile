@@ -1,9 +1,9 @@
-NAME      := BetterKeyboard
+NAME      := keyboard_movement
 VERSION   ?= $(shell cat VERSION)
 BUILD     ?= release
 OUT       ?= build
 
-SRC := src/module.c src/boot.c src/itemkeys.c src/ikcore.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/platform.c
+SRC := src/module.c src/boot.c src/itemkeys.c src/ikcore.c src/hooks.c src/aimkeep.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/platform.c
 OBJ_FLAGS_COMMON := -std=c11 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden -Iinclude -Isrc \
     -DKBM_VERSION='"$(VERSION)"'
 
@@ -36,13 +36,13 @@ package-windows: windows
 	rm -rf $(OUT)/pkg-windows
 	mkdir -p $(OUT)/pkg-windows/engine_modules/$(NAME)
 	cp $(OUT)/windows/$(NAME).dll $(OUT)/pkg-windows/engine_modules/$(NAME)/
-	cp config/$(NAME).ini $(OUT)/pkg-windows/engine_modules/$(NAME)/
+	cp config/BetterKeyboard.ini $(OUT)/pkg-windows/engine_modules/$(NAME)/
 
 package-linux: linux
 	rm -rf $(OUT)/pkg-linux
 	mkdir -p $(OUT)/pkg-linux/engine_modules/$(NAME)
 	cp $(OUT)/linux/$(NAME).so $(OUT)/pkg-linux/engine_modules/$(NAME)/
-	cp config/$(NAME).ini $(OUT)/pkg-linux/engine_modules/$(NAME)/
+	cp config/BetterKeyboard.ini $(OUT)/pkg-linux/engine_modules/$(NAME)/
 
 manifest:
 	bash tools/make_manifest.sh
