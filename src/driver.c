@@ -8,6 +8,7 @@
 #include "itemkeys.h"
 #include "keys.h"
 #include "movement.h"
+#include "trace.h"
 #include "platform.h"
 
 static KbmTracker g_tracker;
@@ -20,6 +21,7 @@ void kbm_driver_reset(void) {
     g_driving = false;
     g_last_active = false;
     memset(g_learned, 0, sizeof g_learned);
+    kbm_trace_reset();
 }
 
 static bool is_local(uint32_t pl) { return (kbm_ld32(pl + KBM_PL_IS_LOCAL_WORD) & 1u) == 1u; }
@@ -82,6 +84,7 @@ void kbm_driver_before_input(KbmCpu *c, uint32_t pl, bool alt) {
 
 void kbm_driver_on_input(KbmCpu *c, uint32_t pl, bool alt) {
     if (!is_local(pl)) return;
+    kbm_trace_update(pl, alt);
 
     const char *gate = gate_reason();
     LockLevel lock = input_lock(alt);
