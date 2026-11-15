@@ -10,6 +10,7 @@
 #include "itemkeys.h"
 #include "keys.h"
 #include "platform.h"
+#include "trace.h"
 
 #ifndef KBM_VERSION
 #define KBM_VERSION "0.1.0"
@@ -39,6 +40,7 @@ static void module_shutdown(void) {
     kbm_boot_stop();
     kbm_itemkeys_stop();
     kbm_hooks_remove();
+    kbm_trace_close();
     g_loaded = false;
 }
 
@@ -72,6 +74,7 @@ MHGU_ENGINE_MODULE_EXPORT bool mhgu_engine_module_entry(const MhguHost *host, Mh
 
     kbm_itemkeys_init();
     kbm_driver_reset();
+    kbm_trace_init(host->module_dir);
     if (!kbm_boot_start()) {
         abort_load();
         return false;
