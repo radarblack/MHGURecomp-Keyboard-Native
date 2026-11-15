@@ -34,6 +34,9 @@ typedef struct KbmConfig {
     KbmTurn turn;
     bool safe_area_hook;
     bool respect_locks;
+    bool trace_actions;
+    uint32_t trace_max_lines;
+    char trace_marker_text[KBM_KEY_TEXT];
     bool item_hotkeys;
     uint32_t ik_double_ms;
     uint32_t ik_use_mask;
