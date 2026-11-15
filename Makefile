@@ -3,7 +3,7 @@ VERSION   ?= $(shell cat VERSION)
 BUILD     ?= release
 OUT       ?= build
 
-SRC := src/module.c src/boot.c src/itemkeys.c src/ikcore.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/platform.c
+SRC := src/module.c src/boot.c src/itemkeys.c src/ikcore.c src/trace.c src/hooks.c src/driver.c src/keys.c src/movement.c src/config.c src/host.c src/platform.c
 OBJ_FLAGS_COMMON := -std=c11 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden -Iinclude -Isrc \
     -DKBM_VERSION='"$(VERSION)"'
 
