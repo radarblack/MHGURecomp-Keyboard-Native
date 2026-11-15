@@ -25,6 +25,9 @@ void kbm_config_defaults(KbmConfig *cfg) {
     cfg->turn_max_deg = 60.0;
     cfg->safe_area_hook = true;
     cfg->respect_locks = true;
+    cfg->trace_actions = false;
+    cfg->trace_max_lines = 6000;
+    snprintf(cfg->trace_marker_text, KBM_KEY_TEXT, "F9");
     cfg->item_hotkeys = true;
     cfg->ik_double_ms = 350;
     cfg->ik_use_mask = 0;
@@ -140,6 +143,14 @@ static void apply(KbmConfig *cfg, const char *key, const char *val) {
         char *end;
         long v = strtol(val, &end, 10);
         if (end != val && v >= 0 && v <= 2000) cfg->ik_double_ms = (uint32_t)v;
+    } else if (!strcasecmp(key, "TraceActions")) {
+        if (kbm_parse_bool(val, &b)) cfg->trace_actions = b;
+    } else if (!strcasecmp(key, "TraceMaxLines")) {
+        char *end;
+        long v = strtol(val, &end, 10);
+        if (end != val && v >= 0 && v <= 1000000) cfg->trace_max_lines = (uint32_t)v;
+    } else if (!strcasecmp(key, "TraceMarkerKey")) {
+        snprintf(cfg->trace_marker_text, KBM_KEY_TEXT, "%s", val);
     } else if (!strcasecmp(key, "UsePadMask")) {
         char *end;
         unsigned long v = strtoul(val, &end, 0);
