@@ -36,8 +36,12 @@ static const char *gate_reason(void) {
     return NULL;
 }
 
-static int choose_magnitude(const KbmMove *m, int game_mag) {
-    int target = m->walk ? 1 : 2;
+static int choose_magnitude(const KbmMove *m, int game_mag, bool alt) {
+    // In safe areas the game's TownRun action is a separate button action. A key such as
+    // Left Shift can be rebound to TownRun while the port's Walk keybind still names it.
+    // Unless explicitly requested, Sprint must win over the Walk modifier in this path.
+    bool walking = m->walk && (!alt || g_cfg.safe_area_walk);
+    int target = walking ? 1 : 2;
     if (kbm_tilt_category(game_mag) == target) {
         if (!m->contested && g_learned[target] != game_mag) g_learned[target] = game_mag;
         return game_mag;
@@ -116,7 +120,7 @@ void kbm_driver_on_input(KbmCpu *c, uint32_t pl, bool alt) {
     int32_t reversed_word = (int32_t)kbm_ld32(pl + KBM_PL_REVERSED_WORD);
     if (!alt && reversed_word > 0) angle = (uint16_t)(angle - 0x8000);
     int game_mag = (int16_t)kbm_ld16(pl + KBM_PL_STICK_MAG);
-    int mag = choose_magnitude(&m, game_mag);
+    int mag = choose_magnitude(&m, game_mag, alt);
     kbm_st16(pl + KBM_PL_STICK_ANGLE, angle);
     kbm_st16(pl + KBM_PL_STICK_MAG, (uint16_t)mag);
 }
