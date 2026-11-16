@@ -24,6 +24,7 @@ void kbm_config_defaults(KbmConfig *cfg) {
     cfg->turn_min_deg = 12.0;
     cfg->turn_max_deg = 60.0;
     cfg->safe_area_hook = true;
+    cfg->safe_area_walk = false;
     cfg->respect_locks = true;
     cfg->item_hotkeys = true;
     cfg->ik_double_ms = 350;
@@ -134,6 +135,8 @@ static void apply(KbmConfig *cfg, const char *key, const char *val) {
         if (kbm_parse_bool(val, &b)) cfg->respect_locks = b;
     } else if (!strcasecmp(key, "SafeAreaHook")) {
         if (kbm_parse_bool(val, &b)) cfg->safe_area_hook = b;
+    } else if (!strcasecmp(key, "SafeAreaWalk")) {
+        if (kbm_parse_bool(val, &b)) cfg->safe_area_walk = b;
     } else if (!strcasecmp(key, "ItemHotkeys")) {
         if (kbm_parse_bool(val, &b)) cfg->item_hotkeys = b;
     } else if (!strcasecmp(key, "DoublePressMs")) {
