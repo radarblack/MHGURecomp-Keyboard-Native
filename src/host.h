@@ -27,6 +27,9 @@ typedef struct KbmHost {
 
 extern KbmHost g_host;
 
+void kbm_log_set(void (*fn)(const char *fmt, ...));
+void kbm_log(const char *fmt, ...);
+
 bool kbm_host_resolve(bool require_gates);
 bool kbm_guest_verify(void);
 bool kbm_guest_signatures_match(void);
