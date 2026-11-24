@@ -16,7 +16,7 @@ endif
 LINUX_CC   ?= gcc
 WINDOWS_CC ?= x86_64-w64-mingw32-gcc
 
-.PHONY: all linux windows manifest package-windows package-linux clean
+.PHONY: all linux windows package-windows package-linux test clean
 
 all: linux
 
@@ -44,8 +44,8 @@ package-linux: linux
 	cp $(OUT)/linux/$(NAME).so $(OUT)/pkg-linux/engine_modules/$(NAME)/
 	cp config/$(NAME).ini $(OUT)/pkg-linux/engine_modules/$(NAME)/
 
-manifest:
-	bash tools/make_manifest.sh
+test:
+	bash tests/run_tests.sh
 
 clean:
 	rm -rf $(OUT)
