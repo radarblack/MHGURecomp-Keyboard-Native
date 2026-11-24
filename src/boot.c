@@ -40,24 +40,29 @@ static void worker(void *unused) {
 
     for (;;) {
         if (stop_requested()) {
+            kbm_log("stopped while waiting for the game");
             set_state(KBM_BOOT_STOPPED);
             return;
         }
         if (game_ready()) break;
         uint64_t now = kbm_now_ms();
         if (now - t0 >= limit_ms) {
-            if (!g_host.dispatch_lookup) kbm_guest_verify();
+            kbm_log("the game was not ready after %u s (HookWaitSeconds): giving up", (unsigned)g_cfg.hook_wait_s);
+            kbm_guest_verify();
             fail();
             return;
         }
         kbm_sleep_ms(KBM_POLL_MS);
     }
 
+    kbm_log("the game is ready, verifying function signatures");
     if (!kbm_guest_verify()) {
+        kbm_log("signature verification failed: the module stays inactive");
         fail();
         return;
     }
     if (stop_requested()) {
+        kbm_log("stopped before installing hooks");
         set_state(KBM_BOOT_STOPPED);
         return;
     }
@@ -65,7 +70,9 @@ static void worker(void *unused) {
     kbm_driver_reset();
     for (int attempt = 1;; attempt++) {
         if (kbm_hooks_install()) break;
+        kbm_log("hook install attempt %d of %d failed", attempt, KBM_INSTALL_TRIES);
         if (attempt >= KBM_INSTALL_TRIES || stop_requested()) {
+            kbm_log("hooks could not be installed: the module stays inactive");
             fail();
             return;
         }
@@ -73,6 +80,7 @@ static void worker(void *unused) {
     }
     kbm_itemkeys_start();
     set_state(KBM_BOOT_ACTIVE);
+    kbm_log("active");
 }
 
 bool kbm_boot_start(void) {
