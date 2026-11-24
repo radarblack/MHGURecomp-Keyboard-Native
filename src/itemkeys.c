@@ -6,6 +6,7 @@
 #include "config.h"
 #include "guest.h"
 #include "ikcore.h"
+#include "host.h"
 #include "platform.h"
 
 #define MAX_EVENT_AGE_MS 600
@@ -28,8 +29,6 @@ static KbmThread g_thread;
 static volatile int g_stop;
 static bool g_thread_on;
 
-
-
 static bool is_local(uint32_t pl) { return (kbm_ld32(pl + KBM_PL_IS_LOCAL_WORD) & 1u) == 1u; }
 static bool sane_player(uint32_t a) { return a >= MIN_DATA_ADDR && a < MAX_PLAYER_ADDR && !(a & 3); }
 
@@ -51,8 +50,14 @@ bool kbm_itemkeys_init(void) {
     memset(&g_inject, 0, sizeof g_inject);
     kbm_ik_ring_init(&g_ring);
     kbm_ik_state_init(&g_state);
-    if (!g_cfg.item_hotkeys) return false;
-    if (!g_host.guest_call) return false;
+    if (!g_cfg.item_hotkeys) {
+        kbm_log("item hotkeys: disabled in the ini");
+        return false;
+    }
+    if (!g_host.guest_call) {
+        kbm_log("item hotkeys: the port has no guest_call, item hotkeys are off");
+        return false;
+    }
     int usable = 0;
     for (int i = 0; i < KBM_IK_KEYS; i++) {
         char label[16];
@@ -60,49 +65,64 @@ bool kbm_itemkeys_init(void) {
         memset(&g_binds[i], 0, sizeof g_binds[i]);
         usable += kbm_bind_parse(&g_binds[i], label, g_cfg.ik_key_text[i]);
     }
-    if (!usable) return false;
+    if (!usable) {
+        kbm_log("item hotkeys: none of the 12 keys could be resolved, item hotkeys are off");
+        return false;
+    }
+    kbm_log("item hotkeys: %d of %d keys resolved", usable, KBM_IK_KEYS);
     g_enabled = true;
     return true;
 }
 
 void kbm_itemkeys_push(int key, uint32_t t_ms) { kbm_ik_ring_push(&g_ring, key, t_ms); }
 
+static void poll_keys(bool seed_only) {
+    int n = 0;
+    const bool *ks = g_host.sdl_keyboard_state ? g_host.sdl_keyboard_state(&n) : NULL;
+    if (!ks) return;
+    uint32_t mouse = 0;
+    bool need_mouse = false;
+    for (int i = 0; i < KBM_IK_KEYS; i++) need_mouse |= kbm_bind_uses_mouse(&g_binds[i]);
+    if (need_mouse && g_host.sdl_mouse_state) mouse = g_host.sdl_mouse_state(NULL, NULL);
+    uint32_t now = (uint32_t)kbm_now_ms();
+    for (int i = 0; i < KBM_IK_KEYS; i++) {
+        bool d = kbm_bind_down(&g_binds[i], ks, n, mouse);
+        if (d && !g_down[i] && !seed_only) kbm_itemkeys_push(i, now);
+        g_down[i] = d;
+    }
+}
+
 static void sampler(void *unused) {
     (void)unused;
     while (!__atomic_load_n(&g_stop, __ATOMIC_ACQUIRE)) {
-        int n = 0;
-        const bool *ks = g_host.sdl_keyboard_state ? g_host.sdl_keyboard_state(&n) : NULL;
-        uint32_t mouse = 0;
-        bool need_mouse = false;
-        for (int i = 0; i < KBM_IK_KEYS; i++) need_mouse |= kbm_bind_uses_mouse(&g_binds[i]);
-        if (need_mouse && g_host.sdl_mouse_state) mouse = g_host.sdl_mouse_state(NULL, NULL);
-        if (ks) {
-            uint32_t now = (uint32_t)kbm_now_ms();
-            for (int i = 0; i < KBM_IK_KEYS; i++) {
-                bool d = kbm_bind_down(&g_binds[i], ks, n, mouse);
-                if (d && !g_down[i]) kbm_itemkeys_push(i, now);
-                g_down[i] = d;
-            }
-        }
-        kbm_sleep_ms(g_cfg.ik_sampler_ms ? g_cfg.ik_sampler_ms : 4);
+        poll_keys(false);
+        kbm_sleep_ms(g_cfg.ik_sampler_ms);
     }
 }
 
 bool kbm_itemkeys_start(void) {
-    if (!g_enabled || !g_cfg.ik_sampler_ms) return true;
+    if (!g_enabled) return true;
+    poll_keys(true);
+    if (!g_cfg.ik_sampler_ms) {
+        kbm_log("item hotkeys: SamplerMs is 0, keys are read on the game thread");
+        return true;
+    }
     __atomic_store_n(&g_stop, 0, __ATOMIC_RELEASE);
     g_thread_on = kbm_thread_start(&g_thread, sampler, NULL);
     if (!g_thread_on) {
+        kbm_log("item hotkeys: the sampler thread could not start, item hotkeys are off");
         g_enabled = false;
         return false;
     }
+    kbm_log("item hotkeys: sampler thread running every %u ms", (unsigned)g_cfg.ik_sampler_ms);
     return true;
 }
 
 void kbm_itemkeys_stop(void) {
     if (!g_thread_on) return;
     __atomic_store_n(&g_stop, 1, __ATOMIC_RELEASE);
-    kbm_thread_join(&g_thread, 3000);
+    bool joined = kbm_thread_join(&g_thread, 3000);
+    kbm_log("item hotkeys: sampler thread %s", joined ? "stopped" : "did not stop in time");
     g_thread_on = false;
 }
 
@@ -183,6 +203,7 @@ void kbm_itemkeys_after_input(KbmCpu *c, uint32_t pl, const char *gate) {
     KbmIkEvent e;
     const uint32_t now = (uint32_t)kbm_now_ms();
     if (gate) g_inject.left = 0;
+    if (!g_thread_on) poll_keys(false);
     while (kbm_ik_ring_pop(&g_ring, &e)) {
         if ((uint32_t)(now - e.t_ms) > MAX_EVENT_AGE_MS) continue;
         if (gate) continue;
