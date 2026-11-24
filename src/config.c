@@ -20,9 +20,9 @@ void kbm_config_defaults(KbmConfig *cfg) {
     cfg->socd = KBM_SOCD_LAST;
     cfg->snap_facing = true;
     cfg->turn_mode = KBM_TURN_SMOOTH;
-    cfg->turn_response = 0.6;
-    cfg->turn_min_deg = 12.0;
-    cfg->turn_max_deg = 60.0;
+    cfg->turn_response = 0.3;
+    cfg->turn_min_deg = 6.0;
+    cfg->turn_max_deg = 30.0;
     cfg->safe_area_hook = true;
     cfg->respect_locks = true;
     cfg->trace_actions = false;
@@ -30,7 +30,7 @@ void kbm_config_defaults(KbmConfig *cfg) {
     snprintf(cfg->trace_marker_text, KBM_KEY_TEXT, "F9");
     cfg->item_hotkeys = true;
     cfg->ik_double_ms = 350;
-    cfg->ik_use_mask = 0;
+    cfg->ik_use_mask = 0x0010;
     cfg->ik_use_hold = 3;
     cfg->ik_use_delay = 0;
     cfg->ik_sampler_ms = 4;
@@ -72,6 +72,8 @@ bool kbm_parse_bool(const char *text, bool *out) {
 }
 
 int kbm_parse_actlist(const char *text, KbmActId *out, int max) {
+    KbmActId tmp[KBM_MAX_ACTS];
+    if (max > KBM_MAX_ACTS) max = KBM_MAX_ACTS;
     int n = 0;
     const char *p = text;
     while (*p && n < max) {
@@ -83,11 +85,12 @@ int kbm_parse_actlist(const char *text, KbmActId *out, int max) {
         p = end + 1;
         unsigned long no = strtoul(p, &end, 10);
         if (end == p || st > 0xffff || no > 0xffff) return -1;
-        out[n].st = (uint16_t)st;
-        out[n].no = (uint16_t)no;
+        tmp[n].st = (uint16_t)st;
+        tmp[n].no = (uint16_t)no;
         n++;
         p = end;
     }
+    memcpy(out, tmp, (size_t)n * sizeof tmp[0]);
     return n;
 }
 
@@ -95,6 +98,18 @@ bool kbm_act_listed(const KbmActId *list, int n, uint16_t st, uint16_t no) {
     for (int i = 0; i < n; i++)
         if (list[i].st == st && list[i].no == no) return true;
     return false;
+}
+
+static bool indexed_key(const char *key, const char *prefix, int *n) {
+    size_t len = strlen(prefix);
+    if (strncasecmp(key, prefix, len)) return false;
+    const char *d = key + len;
+    if (!*d) return false;
+    char *end = NULL;
+    long v = strtol(d, &end, 10);
+    if (*end || v < 1 || v > KBM_IK_KEYS) return false;
+    *n = (int)v;
+    return true;
 }
 
 static void apply(KbmConfig *cfg, const char *key, const char *val) {
@@ -186,11 +201,11 @@ static void apply(KbmConfig *cfg, const char *key, const char *val) {
             }
         }
         int n = 0;
-        if (sscanf(key, "ItemKey%d", &n) == 1 && n >= 1 && n <= KBM_IK_KEYS) {
+        if (indexed_key(key, "ItemKey", &n)) {
             snprintf(cfg->ik_key_text[n - 1], KBM_KEY_TEXT, "%s", val);
             return;
         }
-        if (sscanf(key, "ItemSlot%d", &n) == 1 && n >= 1 && n <= KBM_IK_KEYS) {
+        if (indexed_key(key, "ItemSlot", &n)) {
             int slot = 0;
             if (kbm_ik_parse_slot(val, &slot)) cfg->ik_slot[n - 1] = slot;
             return;
@@ -202,8 +217,20 @@ bool kbm_config_load(KbmConfig *cfg, const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return false;
     char line[512];
+    bool skipping = false;
+    bool first = true;
     while (fgets(line, sizeof line, f)) {
-        char *s = trim(line);
+        size_t ln = strlen(line);
+        bool complete = ln > 0 && line[ln - 1] == '\n';
+        if (skipping) {
+            skipping = !complete;
+            continue;
+        }
+        if (!complete && !feof(f)) skipping = true;
+        char *s = line;
+        if (first && !strncmp(s, "\xEF\xBB\xBF", 3)) s += 3;
+        first = false;
+        s = trim(s);
         if (!*s || *s == ';' || *s == '#' || *s == '[') continue;
         char *eq = strchr(s, '=');
         if (!eq) continue;
