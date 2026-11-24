@@ -87,19 +87,28 @@ static void parse_bind(KbmBindId id, const char *text) { kbm_bind_parse(&g_binds
 
 bool kbm_keys_init(const KbmConfig *cfg, KbmSettingFn setting) {
     memset(g_binds, 0, sizeof g_binds);
+    bool usable = true;
     for (int i = 0; i < KBM_B_COUNT; i++) {
         char text[KBM_KEY_TEXT];
         snprintf(text, sizeof text, "%s", k_defaults[i]);
+        const char *source = "default";
         if (!cfg->keys_from_port && cfg->key_text[i][0]) {
             snprintf(text, sizeof text, "%s", cfg->key_text[i]);
-        } else if (!(cfg->keys_from_port && setting && setting(k_ini_names[i], text, sizeof text))) {
+            source = "ini";
+        } else if (cfg->keys_from_port && setting && setting(k_ini_names[i], text, sizeof text)) {
+            source = "port";
+        } else {
             snprintf(text, sizeof text, "%s", k_defaults[i]);
         }
         parse_bind(i, text);
+        if (!g_binds[i].n && i != KBM_B_WALK && strcmp(source, "default")) {
+            kbm_log("%s key \"%s\" (%s) could not be resolved, using the default \"%s\"", k_labels[i], text, source, k_defaults[i]);
+            parse_bind(i, k_defaults[i]);
+            source = "default";
+        }
+        kbm_log("%s key: \"%s\" (%s) -> %d key(s)", k_labels[i], text, source, g_binds[i].n);
+        if (i != KBM_B_WALK && !g_binds[i].n) usable = false;
     }
-    bool usable = true;
-    for (int i = KBM_B_UP; i <= KBM_B_RIGHT; i++)
-        if (!g_binds[i].n) usable = false;
     return usable;
 }
 
