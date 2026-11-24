@@ -3,6 +3,7 @@
 #include "config.h"
 #include "driver.h"
 #include "guest.h"
+#include "host.h"
 
 static void detour_input(KbmCpu *c);
 static void detour_input_alt(KbmCpu *c);
@@ -43,17 +44,26 @@ static void detour_face(KbmCpu *c) {
 
 static bool install_one(KbmHook *h) {
     h->prev = g_host.fnhook_get(h->addr);
-    if (h->prev && !g_host.guest_call) return false;
+    if (h->prev && !g_host.guest_call) {
+        kbm_log("hook %s: %08x is already hooked and the port has no guest_call to chain to it", h->name, (unsigned)h->addr);
+        return false;
+    }
+    if (h->prev) kbm_log("hook %s: chaining to an existing hook at %08x", h->name, (unsigned)h->addr);
     h->detour = g_host.hle_register(h->name, h->fn);
-    if (!h->detour) return false;
+    if (!h->detour) {
+        kbm_log("hook %s: hle_register failed", h->name);
+        return false;
+    }
 
     bool set = g_host.fnhook_set(h->addr, h->detour);
     uint32_t back = g_host.fnhook_get(h->addr);
     if (!set || back != h->detour) {
         if (back == h->detour) g_host.fnhook_set(h->addr, h->prev);
+        kbm_log("hook %s: fnhook_set at %08x failed", h->name, (unsigned)h->addr);
         return false;
     }
     h->installed = true;
+    kbm_log("hook %s: installed at %08x", h->name, (unsigned)h->addr);
     return true;
 }
 
@@ -66,7 +76,10 @@ bool kbm_hooks_install(void) {
         g_hooks[i].passthrough = false;
     }
     for (int i = 0; i < KBM_H_COUNT; i++) {
-        if (!g_hooks[i].enabled) continue;
+        if (!g_hooks[i].enabled) {
+            kbm_log("hook %s: skipped (SafeAreaHook = 0)", g_hooks[i].name);
+            continue;
+        }
         if (!install_one(&g_hooks[i])) {
             kbm_hooks_remove();
             return false;
@@ -81,9 +94,15 @@ static void remove_one(KbmHook *h) {
     if (cur == h->detour) {
         bool ok = g_host.fnhook_set(h->addr, h->prev);
         uint32_t back = g_host.fnhook_get(h->addr);
-        if (!ok || back != h->prev) h->passthrough = true;
+        if (!ok || back != h->prev) {
+            h->passthrough = true;
+            kbm_log("hook %s: could not be removed, it now passes calls straight through", h->name);
+        } else {
+            kbm_log("hook %s: removed", h->name);
+        }
     } else {
         h->passthrough = true;
+        kbm_log("hook %s: another hook was placed on top of it, it now passes calls straight through", h->name);
     }
     h->installed = false;
 }
