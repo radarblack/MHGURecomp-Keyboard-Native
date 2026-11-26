@@ -85,20 +85,15 @@ bool kbm_bind_has_scancode(const KbmBind *b, int scancode) {
 
 static void parse_bind(KbmBindId id, const char *text) { kbm_bind_parse(&g_binds[id], k_labels[id], text); }
 
-bool kbm_keys_init(const KbmConfig *cfg, KbmSettingFn setting) {
+bool kbm_keys_init(KbmSettingFn setting) {
     memset(g_binds, 0, sizeof g_binds);
     bool usable = true;
     for (int i = 0; i < KBM_B_COUNT; i++) {
         char text[KBM_KEY_TEXT];
-        snprintf(text, sizeof text, "%s", k_defaults[i]);
-        const char *source = "default";
-        if (!cfg->keys_from_port && cfg->key_text[i][0]) {
-            snprintf(text, sizeof text, "%s", cfg->key_text[i]);
-            source = "ini";
-        } else if (cfg->keys_from_port && setting && setting(k_ini_names[i], text, sizeof text)) {
-            source = "port";
-        } else {
+        const char *source = "port";
+        if (!setting || !setting(k_ini_names[i], text, sizeof text)) {
             snprintf(text, sizeof text, "%s", k_defaults[i]);
+            source = "default";
         }
         parse_bind(i, text);
         if (!g_binds[i].n && i != KBM_B_WALK && strcmp(source, "default")) {
