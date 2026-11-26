@@ -125,7 +125,7 @@ void kbm_driver_on_input(KbmCpu *c, uint32_t pl, bool alt) {
 }
 
 void kbm_driver_on_face(uint32_t pl) {
-    if (!g_cfg.snap_facing || g_cfg.turn_mode == KBM_TURN_GAME) return;
+    if (g_cfg.turn_mode == KBM_TURN_GAME) return;
     unsigned phase = (kbm_ld32(pl + KBM_PL_PHASE_WORD) & 0xffffu) >> 8;
     uint16_t st = kbm_ld16(pl + KBM_PL_ACT_ST);
     uint16_t no = kbm_ld16(pl + KBM_PL_ACT_NO);
