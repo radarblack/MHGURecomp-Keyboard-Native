@@ -22,7 +22,6 @@ typedef struct KbmActId {
 typedef struct KbmConfig {
     bool enabled;
     uint32_t hook_wait_s;
-    bool strict_version;
     bool require_gates;
     KbmMode mode;
     KbmSocd socd;
@@ -49,8 +48,6 @@ typedef struct KbmConfig {
     int n_allow;
     KbmActId snap_deny[KBM_MAX_ACTS];
     int n_deny;
-    bool keys_from_port;
-    char key_text[5][KBM_KEY_TEXT];
 } KbmConfig;
 
 extern KbmConfig g_cfg;
