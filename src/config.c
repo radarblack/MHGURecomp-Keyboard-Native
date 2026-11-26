@@ -1,4 +1,5 @@
 #include "config.h"
+#include "host.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -18,7 +19,6 @@ void kbm_config_defaults(KbmConfig *cfg) {
     cfg->require_gates = true;
     cfg->mode = KBM_MODE_DIRECT;
     cfg->socd = KBM_SOCD_LAST;
-    cfg->snap_facing = true;
     cfg->turn_mode = KBM_TURN_SMOOTH;
     cfg->turn_response = 0.3;
     cfg->turn_min_deg = 6.0;
@@ -131,7 +131,7 @@ static void apply(KbmConfig *cfg, const char *key, const char *val) {
         if (!strcasecmp(val, "last")) cfg->socd = KBM_SOCD_LAST;
         else if (!strcasecmp(val, "neutral")) cfg->socd = KBM_SOCD_NEUTRAL;
     } else if (!strcasecmp(key, "SnapFacing")) {
-        if (kbm_parse_bool(val, &b)) cfg->snap_facing = b;
+        kbm_log("SnapFacing is retired and ignored: use TurnMode = game to leave facing to the game");
     } else if (!strcasecmp(key, "TurnMode")) {
         if (!strcasecmp(val, "smooth")) cfg->turn_mode = KBM_TURN_SMOOTH;
         else if (!strcasecmp(val, "snap")) cfg->turn_mode = KBM_TURN_SNAP;
