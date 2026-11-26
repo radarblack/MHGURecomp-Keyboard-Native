@@ -29,5 +29,5 @@ typedef bool (*KbmSettingFn)(const char *key, char *out, size_t out_size);
 
 int kbm_split_keys(const char *list, char out[][KBM_TOKEN_MAX], int max);
 bool kbm_parse_mouse_name(const char *name, int *button);
-bool kbm_keys_init(const KbmConfig *cfg, KbmSettingFn setting);
+bool kbm_keys_init(KbmSettingFn setting);
 void kbm_keys_sample(KbmKeys *out);
