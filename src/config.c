@@ -9,13 +9,33 @@
 
 KbmConfig g_cfg;
 
-static const char *const k_key_names[5] = {"Up", "Down", "Left", "Right", "Walk"};
+static const struct {
+    const char *name;
+    const char *hint;
+} k_retired[] = {
+    {"SnapFacing", "use TurnMode = game to leave facing to the game"},
+    {"StrictVersion", "the module no longer refuses to load on any port version"},
+    {"KeysFromPort", "the movement keys now always come from the port's own keybind settings"},
+    {"Up", "the movement keys now always come from the port's own keybind settings"},
+    {"Down", "the movement keys now always come from the port's own keybind settings"},
+    {"Left", "the movement keys now always come from the port's own keybind settings"},
+    {"Right", "the movement keys now always come from the port's own keybind settings"},
+    {"Walk", "the movement keys now always come from the port's own keybind settings"},
+};
+
+static bool retired_key(const char *key) {
+    for (size_t i = 0; i < sizeof k_retired / sizeof k_retired[0]; i++)
+        if (!strcasecmp(key, k_retired[i].name)) {
+            kbm_log("%s is retired and ignored: %s", k_retired[i].name, k_retired[i].hint);
+            return true;
+        }
+    return false;
+}
 
 void kbm_config_defaults(KbmConfig *cfg) {
     memset(cfg, 0, sizeof *cfg);
     cfg->enabled = true;
     cfg->hook_wait_s = 600;
-    cfg->strict_version = false;
     cfg->require_gates = true;
     cfg->mode = KBM_MODE_DIRECT;
     cfg->socd = KBM_SOCD_LAST;
@@ -41,7 +61,6 @@ void kbm_config_defaults(KbmConfig *cfg) {
     }
     kbm_config_finalize(cfg);
     cfg->snap_scope = KBM_SCOPE_UPDATE;
-    cfg->keys_from_port = true;
 }
 
 static char *trim(char *s) {
@@ -120,8 +139,6 @@ static void apply(KbmConfig *cfg, const char *key, const char *val) {
         char *end;
         long v = strtol(val, &end, 10);
         if (end != val && v >= 1 && v <= 86400) cfg->hook_wait_s = (uint32_t)v;
-    } else if (!strcasecmp(key, "StrictVersion")) {
-        if (kbm_parse_bool(val, &b)) cfg->strict_version = b;
     } else if (!strcasecmp(key, "RequireGates")) {
         if (kbm_parse_bool(val, &b)) cfg->require_gates = b;
     } else if (!strcasecmp(key, "Mode")) {
@@ -130,8 +147,6 @@ static void apply(KbmConfig *cfg, const char *key, const char *val) {
     } else if (!strcasecmp(key, "OppositeKeys")) {
         if (!strcasecmp(val, "last")) cfg->socd = KBM_SOCD_LAST;
         else if (!strcasecmp(val, "neutral")) cfg->socd = KBM_SOCD_NEUTRAL;
-    } else if (!strcasecmp(key, "SnapFacing")) {
-        kbm_log("SnapFacing is retired and ignored: use TurnMode = game to leave facing to the game");
     } else if (!strcasecmp(key, "TurnMode")) {
         if (!strcasecmp(val, "smooth")) cfg->turn_mode = KBM_TURN_SMOOTH;
         else if (!strcasecmp(val, "snap")) cfg->turn_mode = KBM_TURN_SNAP;
@@ -191,15 +206,8 @@ static void apply(KbmConfig *cfg, const char *key, const char *val) {
     } else if (!strcasecmp(key, "SnapDeny")) {
         int n = kbm_parse_actlist(val, cfg->snap_deny, KBM_MAX_ACTS);
         if (n >= 0) cfg->n_deny = n;
-    } else if (!strcasecmp(key, "KeysFromPort")) {
-        if (kbm_parse_bool(val, &b)) cfg->keys_from_port = b;
     } else {
-        for (int i = 0; i < 5; i++) {
-            if (!strcasecmp(key, k_key_names[i])) {
-                snprintf(cfg->key_text[i], KBM_KEY_TEXT, "%s", val);
-                return;
-            }
-        }
+        if (retired_key(key)) return;
         int n = 0;
         if (indexed_key(key, "ItemKey", &n)) {
             snprintf(cfg->ik_key_text[n - 1], KBM_KEY_TEXT, "%s", val);
