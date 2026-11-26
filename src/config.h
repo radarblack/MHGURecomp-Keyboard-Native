@@ -26,7 +26,6 @@ typedef struct KbmConfig {
     bool require_gates;
     KbmMode mode;
     KbmSocd socd;
-    bool snap_facing;
     KbmTurnMode turn_mode;
     double turn_response;
     double turn_min_deg;
