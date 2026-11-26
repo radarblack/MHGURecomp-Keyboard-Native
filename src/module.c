@@ -18,19 +18,10 @@
 
 #define KBM_INI_NAME "BetterKeyboard.ini"
 
-static const char *const k_checked_ports[] = {"0.14.", "0.15.", "0.16."};
-
 static bool g_loaded;
 static bool g_shutdown_done;
 
 MHGU_ENGINE_MODULE_EXPORT const uint32_t mhgu_engine_module_api = MHGU_ENGINE_MODULE_API;
-
-static bool port_version_checked(const char *v) {
-    if (!v) return false;
-    for (size_t i = 0; i < sizeof k_checked_ports / sizeof k_checked_ports[0]; i++)
-        if (!strncmp(v, k_checked_ports[i], strlen(k_checked_ports[i]))) return true;
-    return false;
-}
 
 static void abort_load(void) {
     kbm_hooks_remove();
@@ -68,23 +59,12 @@ MHGU_ENGINE_MODULE_EXPORT bool mhgu_engine_module_entry(const MhguHost *host, Mh
         return true;
     }
 
-    if (!port_version_checked(host->port_version)) {
-        if (g_cfg.strict_version) {
-            kbm_log("port %s is not a version this module was checked against and StrictVersion = 1: declining to load",
-                    host->port_version ? host->port_version : "unknown");
-            abort_load();
-            return false;
-        }
-        kbm_log("port %s was not checked against this module, continuing because StrictVersion = 0",
-                host->port_version ? host->port_version : "unknown");
-    }
-
     if (!kbm_host_resolve(g_cfg.require_gates)) {
         kbm_log("the port does not provide everything the module needs: declining to load");
         abort_load();
         return false;
     }
-    if (!kbm_keys_init(&g_cfg, host->setting)) {
+    if (!kbm_keys_init(host->setting)) {
         kbm_log("a movement key could not be resolved: declining to load");
         abort_load();
         return false;
